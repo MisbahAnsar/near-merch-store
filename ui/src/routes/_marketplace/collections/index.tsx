@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/loading';
+import { AlertCircle } from 'lucide-react';
 import {
   useSuspenseCollections,
   collectionLoaders,
@@ -11,6 +12,34 @@ export const Route = createFileRoute('/_marketplace/collections/')({
   pendingComponent: LoadingSpinner,
   loader: async () => {
     await queryClient.ensureQueryData(collectionLoaders.list());
+  },
+  errorComponent: ({ error }) => {
+    const router = useRouter();
+    
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md text-center space-y-4">
+          <div className="text-red-600">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold">Unable to Load Collections</h2>
+          </div>
+          <p className="text-gray-600">
+            {error.message || 'Failed to load collections. Please check your connection and try again.'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => router.invalidate()}>
+              Try Again
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => router.navigate({ to: '/' })}
+            >
+              Go Home
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   },
   component: CollectionsPage,
 });

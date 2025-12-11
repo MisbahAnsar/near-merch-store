@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import type { Network } from 'near-kit';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 const defaultQueryClient = new QueryClient({
   defaultOptions: {
@@ -21,10 +22,12 @@ export interface AppProviderProps {
 
 export function AppProvider({ children, queryClient = defaultQueryClient }: AppProviderProps) {
   return (
-    <QueryClientProvider client={queryClient}>
-      {children}
-      <Toaster position="top-center" richColors closeButton />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        {children}
+        <Toaster position="top-center" richColors closeButton />
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

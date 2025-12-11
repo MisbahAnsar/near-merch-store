@@ -21,6 +21,7 @@ export function useProducts(options?: {
         limit: options?.limit ?? 50,
         offset: options?.offset ?? 0,
       }),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -29,6 +30,7 @@ export function useProduct(id: string) {
     queryKey: productKeys.detail(id),
     queryFn: () => apiClient.getProduct({ id }),
     enabled: !!id,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -43,6 +45,7 @@ export function useFeaturedProducts(limit = 8) {
   return useQuery({
     queryKey: productKeys.featured(limit),
     queryFn: () => apiClient.getFeaturedProducts({ limit }),
+    placeholderData: (prev) => prev,
   });
 }
 

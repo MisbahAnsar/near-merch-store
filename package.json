@@ -7,23 +7,24 @@
     "ui"
   ],
   "scripts": {
-    "dev": "bun --filter '*' dev",
-    "dev:api": "bun --filter marketplace-api dev",
-    "dev:host": "bun --filter host dev",
-    "dev:ui": "bun --filter marketplace_ui dev",
-    "build": "bun --filter '*' build",
-    "build:api": "bun --filter marketplace-api build",
-    "build:host": "bun --filter host build",
-    "build:ui": "bun --filter marketplace_ui build",
-    "deploy": "bun --filter marketplace_ui build && bun --filter marketplace-api build",
-    "start": "bun run --filter host build && bun run --filter host preview",
-    "check-types": "bun --filter '*' check-types",
-    "db:push": "bun --filter host db:push",
-    "db:studio": "bun --filter host db:studio",
-    "db:generate": "bun --filter host db:generate",
-    "db:migrate": "bun --filter host db:migrate"
+    "dev": "turbo dev",
+    "dev:ui": "USE_REMOTE_API=true turbo dev --filter=host --filter=marketplace_ui",
+    "dev:api": "USE_REMOTE_UI=true turbo dev --filter=host --filter=marketplace-api",
+    "start": "turbo preview --filter=host",
+    "build": "turbo build",
+    "build:api": "turbo build --filter=marketplace-api",
+    "build:host": "turbo build --filter=host",
+    "build:ui": "turbo build --filter=marketplace_ui",
+    "deploy": "turbo build --filter=marketplace_ui --filter=marketplace-api",
+    "typecheck": "turbo typecheck",
+    "db:push": "turbo db:push",
+    "db:studio": "turbo db:studio",
+    "db:generate": "turbo db:generate",
+    "db:migrate": "turbo db:migrate"
   },
   "dependencies": {},
-  "devDependencies": {},
+  "devDependencies": {
+    "turbo": "^2.6.3"
+  },
   "packageManager": "bun@1.2.20"
 }

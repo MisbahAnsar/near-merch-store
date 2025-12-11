@@ -8,16 +8,16 @@ import {
   type ReactNode,
   useCallback,
 } from 'react';
-import { loadRemote } from '@module-federation/runtime';
+import { loadRemote } from '@module-federation/enhanced/runtime';
 import { ErrorBoundary } from './error-boundary';
 import { LoadingFallback } from './loading-fallback';
-import remotesConfig from '../remotes.json';
-
-const [primaryRemoteName] = Object.keys(remotesConfig.remotes);
+import { loadBosConfig } from './config';
+import { getRuntimeConfig } from './federation';
 
 const RemoteApp = lazy(async () => {
-  const module = await loadRemote<{ default: FC }>(`${primaryRemoteName}/App`);
-  if (!module) throw new Error(`Failed to load ${primaryRemoteName}/App`);
+  const config = getRuntimeConfig();
+  const module = await loadRemote<{ default: FC }>(`${config.ui.name}/App`);
+  if (!module) throw new Error(`Failed to load ${config.ui.name}/App`);
   return module;
 });
 
@@ -60,8 +60,6 @@ const LoadedMarker: FC<{ onLoad: () => void }> = ({ onLoad }) => {
   return null;
 };
 
-const HOST_TITLE = remotesConfig.title || 'App';
-
 export const Main: FC = () => {
   const [ready, setReady] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
@@ -71,13 +69,18 @@ export const Main: FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    document.title = HOST_TITLE;
+    useEffect(() => {
+    loadBosConfig().then((config) => {
+      document.title = config.title;
+    });
 
     const handleTitleChange = (event: CustomEvent<{ title: string }>) => {
       const remoteTitle = event.detail?.title;
-      if (remoteTitle) {
-        document.title = `${HOST_TITLE} | ${remoteTitle}`;
+      const config = getRuntimeConfig();
+      const hostTitle = config.title;
+      
+      if (remoteTitle && hostTitle) {
+        document.title = `${hostTitle} | ${remoteTitle}`;
       }
     };
 

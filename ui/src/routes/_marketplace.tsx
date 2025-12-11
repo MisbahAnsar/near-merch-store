@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, Link } from '@tanstack/react-router';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Search,
   Heart,
@@ -22,6 +23,7 @@ import { useCart } from '@/hooks/use-cart';
 import { useFavorites } from '@/hooks/use-favorites';
 import { COLLECTIONS } from '@/integrations/marketplace-api';
 import { authClient } from '@/lib/auth-client';
+import { apiClient } from '@/utils/orpc';
 
 export const Route = createFileRoute('/_marketplace')({
   component: MarketplaceLayout,
@@ -33,6 +35,20 @@ function MarketplaceLayout() {
   const { totalCount: cartCount } = useCart();
   const { count: favoritesCount } = useFavorites();
   const { data: session, isPending } = authClient.useSession();
+
+  const { isError: isApiOffline } = useQuery({
+    queryKey: ['api-health'],
+    queryFn: async () => {
+      try {
+        await apiClient.getCollections();
+        return { status: 'online' };
+      } catch (error) {
+        throw error;
+      }
+    },
+    refetchInterval: 30000,
+    retry: false,
+  });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +64,16 @@ function MarketplaceLayout() {
           <Link to="/" className="flex items-center gap-2 shrink-0">
             <div className="w-8 h-8 bg-[#00ec97] rounded-full" />
             <span className="font-semibold text-lg hidden sm:inline">NEAR Store</span>
+            <div
+              className="relative group"
+              title={isApiOffline ? 'API Disconnected' : 'API Connected'}
+            >
+              <div
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  isApiOffline ? 'bg-red-500' : 'bg-green-500'
+                }`}
+              />
+            </div>
           </Link>
 
           <div className="hidden lg:flex items-center gap-6">

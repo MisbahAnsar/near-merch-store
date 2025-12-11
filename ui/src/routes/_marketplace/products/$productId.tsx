@@ -1,6 +1,6 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
-import { ArrowLeft, Star, Minus, Plus, Heart } from 'lucide-react';
+import { ArrowLeft, Star, Minus, Plus, Heart, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/loading';
 import { useCart } from '@/hooks/use-cart';
@@ -21,6 +21,34 @@ export const Route = createFileRoute('/_marketplace/products/$productId')({
   pendingComponent: LoadingSpinner,
   loader: async ({ params }) => {
     await queryClient.ensureQueryData(productLoaders.detail(params.productId));
+  },
+  errorComponent: ({ error }) => {
+    const router = useRouter();
+    
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md text-center space-y-4">
+          <div className="text-red-600">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold">Unable to Load Product</h2>
+          </div>
+          <p className="text-gray-600">
+            {error.message || 'Failed to load product details. Please check your connection and try again.'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => router.invalidate()}>
+              Try Again
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => router.navigate({ to: '/' })}
+            >
+              Go Home
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   },
   component: ProductDetailPage,
 });

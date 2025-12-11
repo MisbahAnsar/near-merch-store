@@ -289,3 +289,8 @@ fabric.properties
 
 # near
 .near/data
+
+# db
+/**/*.db
+
+.turbo

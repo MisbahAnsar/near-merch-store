@@ -45,8 +45,8 @@ export default createPlugin({
   }),
 
   secrets: z.object({
-    relayerAccountId: z.string().min(1, 'Relayer account ID is required'),
-    relayerPrivateKey: z.string().min(1, 'Relayer private key is required'),
+    RELAYER_ACCOUNT_ID: z.string().min(1, 'Relayer account ID is required'),
+    RELAYER_PRIVATE_KEY: z.string().min(1, 'Relayer private key is required'),
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
     GELATO_API_KEY: z.string().optional(),
@@ -71,21 +71,21 @@ export default createPlugin({
       const keyStore = new InMemoryKeyStore();
       yield* Effect.promise(() =>
         keyStore.add(
-          config.secrets.relayerAccountId,
-          parseKey(config.secrets.relayerPrivateKey)
+          config.secrets.RELAYER_ACCOUNT_ID,
+          parseKey(config.secrets.RELAYER_PRIVATE_KEY)
         )
       );
 
       const near = new Near({
         network: networkConfig,
         keyStore,
-        defaultSignerId: config.secrets.relayerAccountId,
+        defaultSignerId: config.secrets.RELAYER_ACCOUNT_ID,
         defaultWaitUntil: 'FINAL',
       });
 
       const relayerService = new RelayerService(
         near,
-        config.secrets.relayerAccountId,
+        config.secrets.RELAYER_ACCOUNT_ID,
         config.variables.contractId
       );
 

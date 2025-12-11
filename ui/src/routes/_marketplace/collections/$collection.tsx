@@ -1,6 +1,6 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
-import { ArrowLeft, Heart, Plus } from 'lucide-react';
+import { ArrowLeft, Heart, Plus, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/loading';
 import { useCart } from '@/hooks/use-cart';
@@ -17,6 +17,34 @@ export const Route = createFileRoute('/_marketplace/collections/$collection')({
   pendingComponent: LoadingSpinner,
   loader: async ({ params }) => {
     await queryClient.ensureQueryData(collectionLoaders.detail(params.collection));
+  },
+  errorComponent: ({ error }) => {
+    const router = useRouter();
+    
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md text-center space-y-4">
+          <div className="text-red-600">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold">Unable to Load Collection</h2>
+          </div>
+          <p className="text-gray-600">
+            {error.message || 'Failed to load collection data. Please check your connection and try again.'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => router.invalidate()}>
+              Try Again
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => router.navigate({ to: '/collections' })}
+            >
+              Back to Collections
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   },
   component: CollectionDetailPage,
 });

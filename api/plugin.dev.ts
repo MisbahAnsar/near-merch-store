@@ -12,8 +12,16 @@ export default {
       contractId: 'social.near',
     },
     secrets: {
-      relayerAccountId: process.env.RELAYER_ACCOUNT_ID!,
-      relayerPrivateKey: process.env.RELAYER_PRIVATE_KEY!,
+      RELAYER_ACCOUNT_ID: process.env.RELAYER_ACCOUNT_ID!,
+      RELAYER_PRIVATE_KEY: process.env.RELAYER_PRIVATE_KEY!,
+      STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+      STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+      GELATO_API_KEY: process.env.GELATO_API_KEY,
+      GELATO_WEBHOOK_SECRET: process.env.GELATO_WEBHOOK_SECRET,
+      PRINTFUL_API_KEY: process.env.PRINTFUL_API_KEY,
+      PRINTFUL_STORE_ID: process.env.PRINTFUL_STORE_ID,
+      DATABASE_URL: process.env.DATABASE_URL,
+      DATABASE_AUTH_TOKEN: process.env.DATABASE_AUTH_TOKEN,
     },
   } satisfies PluginConfigInput<typeof Plugin>,
 };

@@ -8,6 +8,7 @@ export function useCollections() {
   return useQuery({
     queryKey: collectionKeys.list(),
     queryFn: () => apiClient.getCollections(),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -23,6 +24,7 @@ export function useCollection(slug: string) {
     queryKey: collectionKeys.detail(slug),
     queryFn: () => apiClient.getCollection({ slug }),
     enabled: !!slug,
+    placeholderData: (prev) => prev,
   });
 }
 

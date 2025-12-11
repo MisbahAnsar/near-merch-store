@@ -1,0 +1,42 @@
+{
+  "account": "near-merch-store.near",
+  "app": {
+    "host": {
+      "title": "Near Merch",
+      "development": "http://localhost:3001",
+      "production": "https://everything.market"
+    },
+    "ui": {
+      "name": "marketplace_ui",
+      "development": "http://localhost:3002",
+      "production": "https://elliot-braem-1132-marketplace-ui-near-merch-store-85d382bbc-ze.zephyrcloud.app",
+      "exposes": {
+        "App": "./App",
+        "components": "./components",
+        "providers": "./providers",
+        "types": "./types"
+      }
+    },
+    "api": {
+      "plugins": {
+        "marketplace-api": {
+          "development": "http://localhost:3014",
+          "production": "https://elliot-braem-1134-marketplace-api-near-merch-stor-d2028ec76-ze.zephyrcloud.app",
+          "variables": {
+            "network": "mainnet",
+            "contractId": "social.near"
+          },
+          "secrets": {
+            "RELAYER_ACCOUNT_ID": "{{RELAYER_ACCOUNT_ID}}",
+            "RELAYER_PRIVATE_KEY": "{{RELAYER_PRIVATE_KEY}}",
+            "STRIPE_SECRET_KEY": "{{STRIPE_SECRET_KEY}}",
+            "STRIPE_WEBHOOK_SECRET": "{{STRIPE_WEBHOOK_SECRET}}",
+            "PRINTFUL_API_KEY": "{{PRINTFUL_API_KEY}}",
+            "DATABASE_URL": "{{DATABASE_URL}}",
+            "DATABASE_AUTH_TOKEN": "{{DATABASE_AUTH_TOKEN}}"
+          }
+        }
+      }
+    }
+  }
+}

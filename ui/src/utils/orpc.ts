@@ -4,13 +4,28 @@ import { QueryCache, QueryClient } from '@tanstack/react-query';
 import type { ContractRouterClient } from '@orpc/contract';
 import type { contract } from '../../../api/src/contract';
 
-export const API_URL = `${window.location.origin}/api/rpc`;
+export const API_URL = import.meta.env.API_URL || `${window.location.origin}/api/rpc`;
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: () => {},
   }),
-  defaultOptions: { queries: { staleTime: 60 * 1000 } },
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      retry: (failureCount, error) => {
+        if (error && typeof error === 'object' && 'message' in error) {
+          const message = String(error.message).toLowerCase();
+          if (message.includes('fetch') || message.includes('network')) {
+            return false;
+          }
+        }
+        return failureCount < 2;
+      },
+      refetchOnWindowFocus: false,
+    },
+  },
 });
 
 function createApiLink() {
