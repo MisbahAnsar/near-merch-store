@@ -5,15 +5,14 @@ import { Button } from "@/components/ui/button";
 import { useCart } from "@/hooks/use-cart";
 import { useFavorites } from "@/hooks/use-favorites";
 import {
-  productLoaders,
   requiresSize,
   useProducts,
-  useSuspenseProduct,
   type Product,
   type ProductImage
 } from "@/integrations/api";
+import { getMergeTargetId, PRODUCT_MERGES } from "@/integrations/api/merges";
 import { cn } from "@/lib/utils";
-import { queryClient } from "@/utils/orpc";
+import { apiClient } from "@/utils/orpc";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { ProductCard } from "@/components/marketplace/product-card";
 import { AlertCircle, ArrowLeft, Minus, Plus } from "lucide-react";
@@ -22,7 +21,30 @@ import { useState } from "react";
 export const Route = createFileRoute("/_marketplace/products/$productId")({
   pendingComponent: LoadingSpinner,
   loader: async ({ params }) => {
-    await queryClient.ensureQueryData(productLoaders.detail(params.productId));
+    try {
+      const targetId = getMergeTargetId(params.productId);
+
+      if (!targetId) {
+        const data = await apiClient.getProduct({ id: params.productId });
+        return { data: { product: data.product, mergedProducts: undefined } };
+      }
+
+      const sourceIds = PRODUCT_MERGES[targetId] || [];
+      const allIds = [targetId, ...sourceIds];
+
+      const results = await Promise.all(
+        allIds.map(pid => apiClient.getProduct({ id: pid }))
+      );
+
+      return {
+        data: {
+          product: results[0].product,
+          mergedProducts: results.map(r => r.product)
+        }
+      };
+    } catch (error) {
+      return { error: error as Error, data: null };
+    }
   },
   errorComponent: ({ error }) => {
     const router = useRouter();
@@ -35,15 +57,11 @@ export const Route = createFileRoute("/_marketplace/products/$productId")({
             <h2 className="text-xl font-semibold">Unable to Load Product</h2>
           </div>
           <p className="text-gray-600">
-            {error.message ||
-              "Failed to load product details. Please check your connection and try again."}
+            {error.message || "Failed to load product details. Please check your connection and try again."}
           </p>
           <div className="flex gap-3 justify-center">
             <Button onClick={() => router.invalidate()}>Try Again</Button>
-            <Button
-              variant="outline"
-              onClick={() => router.navigate({ to: "/" })}
-            >
+            <Button variant="outline" onClick={() => router.navigate({ to: "/" })}>
               Go Home
             </Button>
           </div>
@@ -105,9 +123,32 @@ function ProductDetailPage() {
   const { addToCart } = useCart();
   const { favoriteIds, toggleFavorite } = useFavorites();
 
-  const { data } = useSuspenseProduct(productId);
-  const product = data.product;
-  const mergedProducts = data.mergedProducts ?? [product];
+  const loaderData = Route.useLoaderData();
+  
+  if (loaderData.error || !loaderData.data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md text-center space-y-4">
+          <div className="text-red-600">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold">Unable to Load Product</h2>
+          </div>
+          <p className="text-gray-600">
+            {loaderData.error?.message || "Failed to load product details. Please check your connection and try again."}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => window.location.reload()}>Try Again</Button>
+            <Link to="/">
+              <Button variant="outline">Go Home</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { product, mergedProducts: mergedProductsData } = loaderData.data;
+  const mergedProducts = mergedProductsData ?? [product];
 
   const [selectedStyleId, setSelectedStyleId] = useState(product.id);
   const currentStyle: Product = mergedProducts.find((p: Product) => p.id === selectedStyleId) || product;
