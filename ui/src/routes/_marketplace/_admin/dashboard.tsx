@@ -31,7 +31,7 @@ import { useProducts, useSyncStatus, useSyncProducts, useUpdateProductListing, t
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_marketplace/_admin/admin")({
+export const Route = createFileRoute("/_marketplace/_admin/dashboard")({
   component: AdminDashboard,
 });
 

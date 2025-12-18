@@ -1,6 +1,5 @@
 import { useCart } from "@/hooks/use-cart";
 import { useOrderByCheckoutSession } from "@/integrations/marketplace-api/orders";
-import { authClient } from "@/lib/auth-client";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   CheckCircle,
@@ -46,7 +45,6 @@ const shouldPollStatus = (status?: string) => {
 
 function OrderConfirmationPage() {
   const { session_id } = Route.useSearch();
-  const { data: session } = authClient.useSession();
   const { clearCart } = useCart();
 
   const { data: orderData, isLoading } = useOrderByCheckoutSession(session_id, {

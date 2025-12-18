@@ -1,5 +1,5 @@
-import { useQuery, useSuspenseQuery, useQueries, useMutation } from '@tanstack/react-query';
 import { apiClient, queryClient } from '@/utils/orpc';
+import { useMutation, useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { productKeys, type ProductCategory } from './keys';
 import { HIDDEN_PRODUCT_IDS, PRODUCT_MERGES, getMergeTargetId } from './merges';
 
@@ -25,7 +25,6 @@ export function useProducts(options?: {
         limit: options?.limit ?? 50,
         offset: options?.offset ?? 0,
         includeUnlisted: options?.includeUnlisted,
-      }),
       });
 
       return {

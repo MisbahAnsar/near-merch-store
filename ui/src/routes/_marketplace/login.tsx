@@ -1,4 +1,8 @@
-import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  redirect,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
@@ -23,7 +27,6 @@ export const Route = createFileRoute("/_marketplace/login")({
 });
 
 function LoginPage() {
-  const [isExpanded, setIsExpanded] = useState(false);
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
 
@@ -120,9 +123,7 @@ function LoginPage() {
   };
 
   const isLoading =
-    isConnectingWallet ||
-    isSigningInWithNear ||
-    isDisconnectingWallet;
+    isConnectingWallet || isSigningInWithNear || isDisconnectingWallet;
 
   return (
     <div className="bg-background min-h-screen w-full flex items-center justify-center py-16 px-4">

@@ -36,6 +36,13 @@
       "when": 1766004137240,
       "tag": "0004_flippant_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1766088505174,
+      "tag": "0005_fast_puck",
+      "breakpoints": true
     }
   ]
 }
