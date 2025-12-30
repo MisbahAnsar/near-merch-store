@@ -1,7 +1,7 @@
 import { FavoriteButton } from "@/components/marketplace/favorite-button";
 import { useFavorites } from "@/hooks/use-favorites";
 import { type Product, useSuspenseProduct } from "@/integrations/api";
-import { cn } from "@/lib/utils";
+import { cn, toUrlProductId } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import React, { useCallback } from "react";
@@ -164,8 +164,9 @@ function VerticalProductLayout({
       <div className="relative bg-[#F0F0F0] overflow-hidden shrink-0 aspect-square w-full">
         <Link
           to="/products/$productId"
-          params={{ productId: product.id }}
+          params={{ productId: toUrlProductId(product.id) }}
           className="block w-full h-full"
+          resetScroll={true}
         >
           {displayImage ? (
             <img
@@ -211,8 +212,9 @@ function VerticalProductLayout({
         <div className="space-y-1">
           <Link
             to="/products/$productId"
-            params={{ productId: product.id }}
+            params={{ productId: toUrlProductId(product.id) }}
             className="block"
+            resetScroll={true}
           >
             <h3
               className={cn(
@@ -272,8 +274,9 @@ function HorizontalProductLayout({
       <div className="relative bg-[#F0F0F0] overflow-hidden shrink-0 size-20 rounded-md">
         <Link
           to="/products/$productId"
-          params={{ productId: product.id }}
+          params={{ productId: toUrlProductId(product.id) }}
           className="block w-full h-full"
+          resetScroll={true}
         >
           {displayImage ? (
             <img
@@ -295,8 +298,9 @@ function HorizontalProductLayout({
           <div className="min-w-0">
             <Link
               to="/products/$productId"
-              params={{ productId: product.id }}
+              params={{ productId: toUrlProductId(product.id) }}
               className="block"
+              resetScroll={true}
             >
               <h3 className="font-medium text-foreground leading-tight transition-colors hover:text-primary text-base">
                 {product.title}
