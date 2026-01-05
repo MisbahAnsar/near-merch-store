@@ -5,45 +5,32 @@ import { PingPayClient, type CreateCheckoutSessionInput } from './client';
 export class PingPayService {
   private client: PingPayClient;
   private recipientAddress: string;
-  private recipientChainId: string;
 
   constructor(
     baseUrl = 'https://pay.pingpay.io',
-    recipientAddress = 'yourstore.near',
-    recipientChainId = 'near:mainnet'
+    recipientAddress = 'near-merch-store.near'
   ) {
     this.client = new PingPayClient(baseUrl);
     this.recipientAddress = recipientAddress;
-    this.recipientChainId = recipientChainId;
   }
 
   createCheckout(input: CheckoutSessionInput): Effect.Effect<CheckoutSessionOutput, Error> {
     return Effect.tryPromise({
       try: async () => {
-        const totalAmount = input.amount;
-        const amountInSmallestUnit = Math.round(totalAmount).toString();
+        const amountInCents = Math.round(input.amount);
+        const amountInUSDC = amountInCents * 10000;
 
         const pingInput: CreateCheckoutSessionInput = {
-          amount: {
-            assetId: 'nep141:wrap.near',
-            amount: amountInSmallestUnit,
-          },
+          amount: String(amountInUSDC),
           recipient: {
             address: this.recipientAddress,
-            chainId: this.recipientChainId,
           },
-          theme: {
-            brandColor: '#00ec97',
-            logoUrl: 'https://near.org/logo.svg',
-            buttonText: 'Complete Purchase',
+          asset: {
+            chain: 'NEAR',
+            symbol: 'USDC',
           },
           successUrl: input.successUrl,
           cancelUrl: input.cancelUrl,
-          metadata: {
-            orderId: input.orderId,
-            currency: input.currency,
-            ...input.metadata,
-          },
         };
 
         const response = await this.client.createCheckoutSession(pingInput);
@@ -58,7 +45,7 @@ export class PingPayService {
     });
   }
 
-  verifyWebhook(body: string, signature: string) {
+  verifyWebhook(body: string, _signature: string) {
     return Effect.tryPromise({
       try: async () => {
         return {
@@ -75,13 +62,18 @@ export class PingPayService {
     return Effect.tryPromise({
       try: async () => {
         const response = await this.client.getCheckoutSession(sessionId);
+        const session = response.session;
+
+        const isCompleted = session.status === 'COMPLETED';
+
         return {
-          id: response.session.sessionId,
-          status: response.session.status.toLowerCase(),
-          payment_status: response.session.status === 'COMPLETED' ? 'paid' : 'unpaid',
-          amount_total: parseInt(response.session.amount.amount, 10),
-          currency: 'NEAR',
-          metadata: response.session.metadata || {},
+          id: session.sessionId,
+          status: session.status.toLowerCase(),
+          payment_status: isCompleted ? 'paid' : 'unpaid',
+          amount_total: parseInt(session.amount, 10),
+          currency: session.asset.symbol,
+          paymentId: session.paymentId,
+          metadata: session.metadata || {},
         };
       },
       catch: (error: unknown) =>

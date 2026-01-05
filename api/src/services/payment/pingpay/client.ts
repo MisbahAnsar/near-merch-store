@@ -1,61 +1,57 @@
-export interface PingParty {
+export interface PingRecipient {
   address: string;
-  chainId: string;
 }
 
-export interface PingAssetAmount {
-  assetId: string;
-  amount: string;
-}
-
-export interface PingTheme {
-  brandColor?: string;
-  logoUrl?: string;
-  buttonText?: string;
+export interface PingAsset {
+  chain: string;
+  symbol: string;
 }
 
 export interface CreateCheckoutSessionInput {
-  amount: PingAssetAmount;
-  recipient: PingParty;
-  theme?: PingTheme;
+  amount: string;
+  recipient: PingRecipient;
+  asset: PingAsset;
   successUrl?: string;
   cancelUrl?: string;
-  metadata?: Record<string, any>;
 }
 
-export interface CheckoutSession {
-  sessionId: string;
-  status: 'CREATED' | 'PENDING' | 'COMPLETED' | 'EXPIRED' | 'CANCELLED';
-  paymentId: string | null;
-  amount: PingAssetAmount;
-  recipient: PingParty;
-  theme?: PingTheme;
-  successUrl?: string;
-  cancelUrl?: string;
-  createdAt: string;
-  expiresAt?: string;
-  metadata?: Record<string, any>;
-}
-
-export interface CreateCheckoutSessionResponse {
-  session: CheckoutSession;
+export interface CheckoutSessionResponse {
+  session: {
+    sessionId: string;
+    status: string;
+    amount: string;
+    recipient: string;
+    asset: PingAsset;
+    createdAt: string;
+    expiresAt?: string;
+  };
   sessionUrl: string;
 }
 
 export interface GetCheckoutSessionResponse {
-  session: CheckoutSession;
+  session: {
+    sessionId: string;
+    status: 'CREATED' | 'PENDING' | 'COMPLETED' | 'EXPIRED' | 'CANCELLED';
+    amount: string;
+    recipient: string;
+    asset: PingAsset;
+    paymentId?: string;
+    createdAt: string;
+    expiresAt?: string;
+    metadata?: Record<string, unknown>;
+  };
 }
 
 export class PingPayClient {
   private baseUrl: string;
 
   constructor(baseUrl = 'https://pay.pingpay.io') {
-    this.baseUrl = baseUrl;
+    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
   }
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    
+    const url = `${this.baseUrl}/api${path}`;
+
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -78,7 +74,7 @@ export class PingPayClient {
 
   async createCheckoutSession(
     input: CreateCheckoutSessionInput
-  ): Promise<CreateCheckoutSessionResponse> {
+  ): Promise<CheckoutSessionResponse> {
     return this.request('/checkout/sessions', {
       method: 'POST',
       body: JSON.stringify(input),

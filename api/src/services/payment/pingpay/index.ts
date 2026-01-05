@@ -7,8 +7,7 @@ import { PingPayService } from './service';
 export default createPlugin({
   variables: z.object({
     baseUrl: z.string().default('https://pay.pingpay.io'),
-    recipientAddress: z.string().default('yourstore.near'),
-    recipientChainId: z.string().default('near:mainnet'),
+    recipientAddress: z.string().default('near-merch-store.near'),
   }),
 
   secrets: z.object({}),
@@ -19,8 +18,7 @@ export default createPlugin({
     Effect.gen(function* () {
       const service = new PingPayService(
         config.variables.baseUrl,
-        config.variables.recipientAddress,
-        config.variables.recipientChainId
+        config.variables.recipientAddress
       );
 
       console.log('[Ping Payment Plugin] Initialized successfully');
@@ -61,6 +59,12 @@ export default createPlugin({
       getSession: builder.getSession.handler(async ({ input }) => {
         const session = await Effect.runPromise(service.getSession(input.sessionId));
 
+        const metadata: Record<string, string> | undefined = session.metadata
+          ? Object.fromEntries(
+              Object.entries(session.metadata).map(([k, v]) => [k, String(v)])
+            )
+          : undefined;
+
         return {
           session: {
             id: session.id,
@@ -68,7 +72,7 @@ export default createPlugin({
             paymentStatus: session.payment_status || 'unknown',
             amountTotal: session.amount_total ?? undefined,
             currency: session.currency ?? undefined,
-            metadata: session.metadata ?? undefined,
+            metadata,
           },
         };
       }),

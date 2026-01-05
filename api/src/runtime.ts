@@ -127,8 +127,7 @@ export async function createMarketplaceRuntime(
     const pingpay = await runtime.usePlugin('pingpay', {
       variables: {
         baseUrl: 'https://pay.pingpay.io',
-        recipientAddress: 'yourstore.near',
-        recipientChainId: 'near:mainnet',
+        recipientAddress: 'near-merch-store.near',
       },
       secrets: {},
     });
