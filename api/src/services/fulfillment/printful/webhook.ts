@@ -4,10 +4,13 @@ import type { OrderStatus, TrackingInfo } from '../../../schema';
 
 type PrintfulWebhookPayload = {
   type?: string;
-  data?: {
+  data?: { 
     order?: { 
       external_id?: string;
       status?: string;
+    };
+    catalog_product?: {
+      id?: number;
     };
     shipment?: {
       tracking_number?: string;
@@ -49,6 +52,7 @@ export function verifyPrintfulWebhookSignature(options: {
 export function parsePrintfulWebhook(rawBody: string): {
   eventType: string;
   externalId?: string;
+  catalogProductId?: number;
   data?: PrintfulWebhookPayload['data'];
 } {
   let payload: PrintfulWebhookPayload;
@@ -61,6 +65,7 @@ export function parsePrintfulWebhook(rawBody: string): {
   return {
     eventType: payload.type || 'unknown',
     externalId: payload.data?.order?.external_id,
+    catalogProductId: payload.data?.catalog_product?.id,
     data: payload.data,
   };
 }
@@ -69,11 +74,12 @@ export function computePrintfulUpdate(options: {
   eventType: string;
   data: PrintfulWebhookPayload['data'] | undefined;
   currentStatus: OrderStatus;
-}): { newStatus?: OrderStatus; newTracking?: TrackingInfo[] } {
+}): { newStatus?: OrderStatus; newTracking?: TrackingInfo[]; shouldRetryConfirmation?: boolean } {
   const { eventType, data, currentStatus } = options;
 
   let newStatus: OrderStatus | undefined;
   let newTracking: TrackingInfo[] | undefined;
+  let shouldRetryConfirmation = false;
 
   switch (eventType) {
     case 'order_created':
@@ -89,8 +95,14 @@ export function computePrintfulUpdate(options: {
           newStatus = 'shipped';
           break;
         case 'pending':
+        case 'inprocess':
           if (currentStatus === 'paid' || currentStatus === 'paid_pending_fulfillment') {
             newStatus = 'processing';
+          }
+          break;
+        case 'draft':
+          if (currentStatus === 'paid_pending_fulfillment') {
+            shouldRetryConfirmation = true;
           }
           break;
         case 'canceled':
@@ -173,5 +185,5 @@ export function computePrintfulUpdate(options: {
       break;
   }
 
-  return { newStatus, newTracking };
+  return { newStatus, newTracking, shouldRetryConfirmation };
 }
