@@ -29,7 +29,7 @@ export function useBrowseCatalog(
     queryKey: catalogKeys.list(provider, options),
     queryFn: () =>
       apiClient.browseProviderCatalog({
-        provider: provider as "printful" | "lulu",
+        provider: provider as "printful" | "lulu" | "manual",
         limit: options?.limit ?? 50,
         offset: options?.offset ?? 0,
       }),
@@ -44,7 +44,7 @@ export function useCatalogProduct(
 ) {
   return useQuery({
     queryKey: catalogKeys.detail(provider, id),
-    queryFn: () => apiClient.getProviderCatalogProduct({ provider: provider as "printful" | "lulu", id }),
+    queryFn: () => apiClient.getProviderCatalogProduct({ provider: provider as "printful" | "lulu" | "manual", id }),
     enabled: options?.enabled !== false && !!provider && !!id,
   });
 }
@@ -56,7 +56,7 @@ export function useCatalogVariants(
 ) {
   return useQuery({
     queryKey: catalogKeys.variants(provider, id),
-    queryFn: () => apiClient.getProviderCatalogVariants({ provider: provider as "printful" | "lulu", id }),
+    queryFn: () => apiClient.getProviderCatalogVariants({ provider: provider as "printful" | "lulu" | "manual", id }),
     enabled: options?.enabled !== false && !!provider && !!id,
   });
 }
@@ -175,7 +175,7 @@ export function useGetPlacements(
     queryKey: placementKeys.detail(provider, catalogProductId),
     queryFn: () =>
       apiClient.getProviderPlacements({
-        provider: provider as "printful" | "lulu",
+        provider: provider as "printful" | "lulu" | "manual",
         catalogProductId,
       }),
     enabled: options?.enabled !== false && !!provider && !!catalogProductId,

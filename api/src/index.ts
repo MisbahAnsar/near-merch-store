@@ -16,7 +16,7 @@ import { ProductBuilderService, ProductBuilderServiceLive } from './services/pro
 import { AssetService, AssetServiceLive } from './services/assets';
 import { StripeService } from './services/stripe';
 import { NewsletterService, NewsletterServiceLive } from './services/newsletter';
-import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive } from './store';
+import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ManualFulfillmentStore, ManualFulfillmentStoreLive } from './store';
 import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
 import { computePrintfulUpdate, parsePrintfulWebhook, verifyPrintfulWebhookSignature } from './services/fulfillment/printful/webhook';
@@ -51,6 +51,7 @@ export default createPlugin({
     PING_WEBHOOK_SECRET: z.string().optional(),
     ACCESS_KEY_ID: z.string().optional(),
     SECRET_ACCESS_KEY: z.string().optional(),
+    MANUAL_FULFILLMENT_FROM_EMAIL: z.string().optional(),
     API_DATABASE_URL: z.string().default("file:./marketplace.db"),
     API_DATABASE_AUTH_TOKEN: z.string().optional(),
   }),
@@ -105,6 +106,13 @@ export default createPlugin({
                   environment: config.variables.luluEnvironment,
                 }
                 : undefined,
+            manual: {
+              notificationEmails: [],
+              defaultLeadTimeMinDays: 5,
+              defaultLeadTimeMaxDays: 10,
+              autoAcceptPaidOrders: false,
+              fromEmail: config.secrets.MANUAL_FULFILLMENT_FROM_EMAIL,
+            },
           },
           {
             stripe:
@@ -148,6 +156,7 @@ export default createPlugin({
           ProductTypeStoreLive,
           NewsletterStoreLive,
           AssetStoreLive,
+          ManualFulfillmentStoreLive,
         ),
         dbLayer,
       );
@@ -1096,7 +1105,7 @@ export default createPlugin({
 
               if (deleteResult.deleted > 0) {
                 deleted++;
-              } else {
+            } else {
                 errors.push(...deleteResult.errors);
               }
             } catch (err) {
@@ -1714,7 +1723,7 @@ export default createPlugin({
               const printfulResult = await managedRuntime.runPromise(
                 printfulService.configureWebhooks({
                   defaultUrl: webhookUrl,
-                  events: input.events.filter((event): event is PrintfulWebhookEventType => event !== 'PRINT_JOB_STATUS_CHANGED'),
+                  events: (input.events ?? []).filter((event): event is PrintfulWebhookEventType => event !== 'PRINT_JOB_STATUS_CHANGED'),
                   expiresAt: input.expiresAt,
                 })
               );
@@ -1726,7 +1735,7 @@ export default createPlugin({
                 expiresAt: printfulResult.expiresAt,
               };
               providerSecretKey = printfulResult.secretKey;
-            } else {
+            } else if (input.provider === 'lulu') {
               const luluProvider = runtime.getProvider('lulu');
               if (!luluProvider) {
                 throw new ORPCError('BAD_REQUEST', { message: 'Lulu provider not configured' });
@@ -1753,6 +1762,17 @@ export default createPlugin({
                 publicKey: luluResult.publicKey,
                 expiresAt: luluResult.expiresAt,
               };
+            } else if (input.provider === 'manual') {
+              result = {
+                success: true,
+                webhookUrl: '',
+                enabledEvents: [],
+                publicKey: null,
+                expiresAt: null,
+                settings: input.settings,
+              };
+            } else {
+              throw new ORPCError('BAD_REQUEST', { message: `Unknown provider: ${input.provider}` });
             }
           } catch (error) {
             console.error(`[configureWebhook] Failed to configure ${input.provider} webhooks:`, error);
@@ -1774,6 +1794,7 @@ export default createPlugin({
                   enabledEvents: result.enabledEvents,
                   publicKey: result.publicKey,
                   secretKey: providerSecretKey,
+                  settings: result.settings ?? undefined,
                   lastConfiguredAt: Date.now(),
                   expiresAt: result.expiresAt,
                 });
@@ -1818,7 +1839,7 @@ export default createPlugin({
               );
 
               await managedRuntime.runPromise(printfulService.disableWebhooks());
-            } else {
+            } else if (input.provider === 'lulu') {
               const luluProvider = runtime.getProvider('lulu');
               if (!luluProvider || !secrets.LULU_CLIENT_KEY || !secrets.LULU_CLIENT_SECRET) {
                 throw new ORPCError('BAD_REQUEST', { message: 'Lulu provider not configured' });
@@ -1839,6 +1860,10 @@ export default createPlugin({
               });
 
               await managedRuntime.runPromise(luluService.disableWebhooks(existingConfig?.webhookUrl));
+            } else if (input.provider === 'manual') {
+              // Manual provider has no webhook to disable — no-op
+            } else {
+              throw new ORPCError('BAD_REQUEST', { message: `Unknown provider: ${input.provider}` });
             }
           } catch (error) {
             console.error(`[disableWebhook] Failed to disable ${input.provider} webhooks:`, error);
@@ -1888,7 +1913,7 @@ export default createPlugin({
                 secrets.PRINTFUL_STORE_ID!
               );
               result = await managedRuntime.runPromise(printfulService.ping());
-            } else {
+            } else if (input.provider === 'lulu') {
               if (!runtime.getProvider('lulu') || !secrets.LULU_CLIENT_KEY || !secrets.LULU_CLIENT_SECRET) {
                 throw new ORPCError('BAD_REQUEST', { message: 'Lulu provider not configured' });
               }
@@ -1900,6 +1925,14 @@ export default createPlugin({
                 environment: luluEnvironment,
               });
               result = await managedRuntime.runPromise(luluService.ping());
+} else if (input.provider === 'manual') {
+               const manualProvider = runtime.getProvider('manual');
+               if (!manualProvider) {
+                 throw new ORPCError('BAD_REQUEST', { message: 'Manual provider not configured' });
+               }
+               result = await manualProvider.client.ping();
+            } else {
+              throw new ORPCError('BAD_REQUEST', { message: `Unknown provider: ${input.provider}` });
             }
 
             return {
@@ -1924,14 +1957,16 @@ export default createPlugin({
         .handler(async ({ input }) => {
           const { PRINTFUL_PROVIDER_FIELDS } = await import('./services/fulfillment/printful');
           const { LULU_PROVIDER_FIELDS } = await import('./services/fulfillment/lulu');
+          const { MANUAL_PROVIDER_FIELDS } = await import('./services/fulfillment/manual');
 
           const allConfigs = {
             printful: PRINTFUL_PROVIDER_FIELDS,
             lulu: LULU_PROVIDER_FIELDS,
+            manual: MANUAL_PROVIDER_FIELDS,
           };
 
           if (input.provider) {
-            return { [input.provider]: allConfigs[input.provider] };
+            return { [input.provider]: allConfigs[input.provider as keyof typeof allConfigs] };
           }
 
           return allConfigs;
@@ -2395,6 +2430,205 @@ export default createPlugin({
           } catch {
             return { placements: [] };
           }
+        }),
+
+      // ─── Admin: Manual Fulfillment ───
+
+      getManualFulfillmentQueue: builder.getManualFulfillmentQueue
+        .use(requireAdmin)
+        .handler(async ({ input }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const store = yield* ManualFulfillmentStore;
+              const { fulfillments, total } = yield* store.getQueue(input);
+
+              const orderStore = yield* OrderStore;
+              const enrichedList = [];
+
+              for (const f of fulfillments) {
+                const order = yield* orderStore.find(f.orderId);
+                enrichedList.push({
+                  ...f,
+                  order: order
+                    ? {
+                        id: order.id,
+                        userId: order.userId,
+                        status: order.status,
+                        totalAmount: order.totalAmount,
+                        currency: order.currency,
+                        createdAt: order.createdAt,
+                        items: (order.items ?? []).map((item: any) => ({
+                          id: item.id,
+                          productId: item.productId,
+                          productName: item.productName,
+                          variantName: item.variantName ?? null,
+                          quantity: item.quantity,
+                          unitPrice: item.unitPrice,
+                          fulfillmentProvider: item.fulfillmentProvider ?? null,
+                        })),
+                        shippingAddress: order.shippingAddress
+                          ? {
+                              firstName: order.shippingAddress.firstName,
+                              lastName: order.shippingAddress.lastName,
+                              addressLine1: order.shippingAddress.addressLine1,
+                              city: order.shippingAddress.city,
+                              country: order.shippingAddress.country,
+                              postCode: order.shippingAddress.postCode,
+                              email: order.shippingAddress.email,
+                            }
+                          : null,
+                      }
+                    : null,
+                });
+              }
+
+              return { fulfillments: enrichedList, total };
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            throw new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
+        }),
+
+      acceptManualFulfillment: builder.acceptManualFulfillment
+        .use(requireAdmin)
+        .handler(async ({ input, errors }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const store = yield* ManualFulfillmentStore;
+              const existing = yield* store.getById(input.fulfillmentId);
+              if (!existing) {
+                return yield* Effect.fail(new Error('Manual fulfillment not found'));
+              }
+              if (existing.status !== 'pending') {
+                return yield* Effect.fail(new Error('Only pending fulfillments can be accepted'));
+              }
+
+              const updated = yield* store.updateStatus(input.fulfillmentId, 'accepted');
+
+              const orderStore = yield* OrderStore;
+              yield* orderStore.updateStatus(existing.orderId, 'processing' as OrderStatus, 'admin');
+
+              return { success: true };
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof Error && error.message.includes('not found')) {
+              throw errors.NOT_FOUND({
+                message: error.message,
+                data: { resource: 'manual_fulfillment', resourceId: input.fulfillmentId },
+              });
+            }
+            throw new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
+        }),
+
+      rejectManualFulfillment: builder.rejectManualFulfillment
+        .use(requireAdmin)
+        .handler(async ({ input, errors }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const store = yield* ManualFulfillmentStore;
+              const existing = yield* store.getById(input.fulfillmentId);
+              if (!existing) {
+                return yield* Effect.fail(new Error('Manual fulfillment not found'));
+              }
+              if (existing.status !== 'pending') {
+                return yield* Effect.fail(new Error('Only pending fulfillments can be rejected'));
+              }
+
+              yield* store.updateStatus(input.fulfillmentId, 'rejected', {
+                rejectionReason: input.reason,
+              });
+
+              const orderStore = yield* OrderStore;
+              yield* orderStore.updateStatus(existing.orderId, 'rejected' as OrderStatus, 'admin', input.reason);
+
+              return { success: true };
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof Error && error.message.includes('not found')) {
+              throw errors.NOT_FOUND({
+                message: error.message,
+                data: { resource: 'manual_fulfillment', resourceId: input.fulfillmentId },
+              });
+            }
+            throw new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
+        }),
+
+      updateManualFulfillment: builder.updateManualFulfillment
+        .use(requireAdmin)
+        .handler(async ({ input, errors }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const store = yield* ManualFulfillmentStore;
+              const existing = yield* store.getById(input.fulfillmentId);
+              if (!existing) {
+                return yield* Effect.fail(new Error('Manual fulfillment not found'));
+              }
+
+              const status = input.status ?? existing.status;
+              const extras: Record<string, string> = {};
+              if (input.internalNotes) extras.internalNotes = input.internalNotes;
+              if (input.trackingCode) extras.trackingCode = input.trackingCode;
+              if (input.trackingUrl) extras.trackingUrl = input.trackingUrl;
+              if (input.carrier) extras.carrier = input.carrier;
+
+              const updated = yield* store.updateStatus(input.fulfillmentId, status, extras);
+
+              const orderStore = yield* OrderStore;
+              if (status === 'shipped') {
+                const trackingInfo = input.trackingCode ? [{
+                  trackingCode: input.trackingCode,
+                  trackingUrl: input.trackingUrl ?? existing.trackingUrl ?? '',
+                  shipmentMethodName: input.carrier ?? existing.carrier ?? 'Manual Fulfillment',
+                }] : undefined;
+                if (trackingInfo) {
+                  yield* orderStore.updateTracking(existing.orderId, trackingInfo, 'admin');
+                }
+                yield* orderStore.updateStatus(existing.orderId, 'shipped' as OrderStatus, 'admin');
+              } else if (status === 'delivered') {
+                yield* orderStore.updateStatus(existing.orderId, 'delivered' as OrderStatus, 'admin');
+              }
+
+              return { success: true };
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof Error && error.message.includes('not found')) {
+              throw errors.NOT_FOUND({
+                message: error.message,
+                data: { resource: 'manual_fulfillment', resourceId: input.fulfillmentId },
+              });
+            }
+            throw new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
         }),
 
       // ─── Admin: Assets ───

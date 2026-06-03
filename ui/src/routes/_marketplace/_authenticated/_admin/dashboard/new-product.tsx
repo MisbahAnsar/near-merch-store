@@ -305,6 +305,11 @@ function ProviderStep({
       name: "Lulu",
       description: "Books, prints, and publications — perfect-bound and hardcover",
     },
+    {
+      id: "manual",
+      name: "Basic",
+      description: "Email fulfillment — manual order management with owner notifications",
+    },
   ];
 
   return (

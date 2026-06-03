@@ -13,6 +13,7 @@ import type {
   ProviderWebhookEventType,
   ProductOption,
   ProductMetadata,
+  ManualProviderSettings as ManualProviderSettingsType,
 } from "../schema";
 import type { FulfillmentFile } from "../services/fulfillment/schema";
 
@@ -387,6 +388,7 @@ export const providerConfigs = pgTable("provider_configs", {
   enabledEvents: jsonb("enabled_events").$type<ProviderWebhookEventType[]>(),
   publicKey: text("public_key"),
   secretKey: text("secret_key"),
+  settings: jsonb("settings").$type<ManualProviderSettingsType>(),
   lastConfiguredAt: timestamp("last_configured_at", {
     withTimezone: true,
     mode: "date",
@@ -399,6 +401,34 @@ export const providerConfigs = pgTable("provider_configs", {
     .notNull()
     .defaultNow(),
 });
+
+export const manualFulfillments = pgTable("manual_fulfillments", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  notificationEmails: jsonb("notification_emails").$type<string[]>().default([]),
+  assignedUserId: text("assigned_user_id"),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true, mode: "date" }),
+  rejectedAt: timestamp("rejected_at", { withTimezone: true, mode: "date" }),
+  fulfilledAt: timestamp("fulfilled_at", { withTimezone: true, mode: "date" }),
+  shippedAt: timestamp("shipped_at", { withTimezone: true, mode: "date" }),
+  rejectionReason: text("rejection_reason"),
+  internalNotes: text("internal_notes"),
+  trackingCode: text("tracking_code"),
+  trackingUrl: text("tracking_url"),
+  carrier: text("carrier"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+}, (table) => [
+  index("manual_fulfillments_order_idx").on(table.orderId),
+  index("manual_fulfillments_status_idx").on(table.status),
+]);
 
 export const newsletterSubscriptions = pgTable(
   "newsletter_subscriptions",

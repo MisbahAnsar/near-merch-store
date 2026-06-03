@@ -541,7 +541,7 @@ export const contract = oc.router({
         "Returns the configuration for a fulfillment provider including webhook settings.",
       tags: ["Admin", "Providers"],
     })
-    .input(z.object({ provider: z.enum(['printful', 'lulu']) }))
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']) }))
     .output(z.object({ config: ProviderConfigSchema.nullable() }))
     .errors({ UNAUTHORIZED }),
 
@@ -566,7 +566,7 @@ export const contract = oc.router({
       description: "Disables webhook notifications for a fulfillment provider.",
       tags: ["Admin", "Providers"],
     })
-    .input(z.object({ provider: z.enum(['printful', 'lulu']) }))
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']) }))
     .output(z.object({ success: z.boolean() }))
     .errors({ BAD_REQUEST, UNAUTHORIZED }),
 
@@ -578,7 +578,7 @@ export const contract = oc.router({
       description: "Tests the connection to a fulfillment provider.",
       tags: ["Admin", "Providers"],
     })
-    .input(z.object({ provider: z.enum(['printful', 'lulu']) }))
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']) }))
     .output(z.object({
       success: z.boolean(),
       message: z.string().optional(),
@@ -595,7 +595,7 @@ export const contract = oc.router({
         "Returns field configurations for each fulfillment provider, used to display product details.",
       tags: ["Admin", "Providers"],
     })
-    .input(z.object({ provider: z.enum(['printful', 'lulu']).optional() }))
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']).optional() }))
     .output(z.record(z.string(), z.any()))
     .errors({ UNAUTHORIZED }),
 
@@ -866,7 +866,7 @@ export const contract = oc.router({
       tags: ["Admin", "Catalog"],
     })
     .input(z.object({
-      provider: z.enum(["printful", "lulu"]),
+      provider: z.enum(["printful", "lulu", "manual"]),
       limit: z.number().int().positive().max(100).default(50),
       offset: z.number().int().min(0).default(0),
     }))
@@ -885,7 +885,7 @@ export const contract = oc.router({
       tags: ["Admin", "Catalog"],
     })
     .input(z.object({
-      provider: z.enum(["printful", "lulu"]),
+      provider: z.enum(["printful", "lulu", "manual"]),
       id: z.string(),
     }))
     .output(z.object({
@@ -902,7 +902,7 @@ export const contract = oc.router({
       tags: ["Admin", "Catalog"],
     })
     .input(z.object({
-      provider: z.enum(["printful", "lulu"]),
+      provider: z.enum(["printful", "lulu", "manual"]),
       id: z.string(),
     }))
     .output(z.object({
@@ -919,13 +919,120 @@ export const contract = oc.router({
       tags: ["Admin", "Fulfillment"],
     })
     .input(z.object({
-      provider: z.enum(["printful", "lulu"]),
+      provider: z.enum(["printful", "lulu", "manual"]),
       catalogProductId: z.string(),
     }))
     .output(z.object({
       placements: z.array(CatalogSlotSchema),
     }))
     .errors({ BAD_REQUEST, UNAUTHORIZED }),
+
+  // ─── Admin: Manual Fulfillment ───
+
+  getManualFulfillmentQueue: oc
+    .route({
+      method: "GET",
+      path: "/admin/manual-fulfillment",
+      summary: "Get manual fulfillment queue",
+      description: "Returns the manual fulfillment queue, optionally filtered by status.",
+      tags: ["Admin", "Manual Fulfillment"],
+    })
+    .input(z.object({
+      status: z.enum(["pending", "accepted", "processing", "shipped", "delivered", "rejected", "cancelled"]).optional(),
+      limit: z.number().int().positive().max(100).default(50),
+      offset: z.number().int().min(0).default(0),
+    }))
+    .output(z.object({
+      fulfillments: z.array(z.object({
+        id: z.string(),
+        orderId: z.string(),
+        status: z.enum(["pending", "accepted", "processing", "shipped", "delivered", "rejected", "cancelled"]),
+        notificationEmails: z.array(z.string()),
+        assignedUserId: z.string().nullable(),
+        acceptedAt: z.string().nullable(),
+        rejectedAt: z.string().nullable(),
+        fulfilledAt: z.string().nullable(),
+        shippedAt: z.string().nullable(),
+        rejectionReason: z.string().nullable(),
+        internalNotes: z.string().nullable(),
+        trackingCode: z.string().nullable(),
+        trackingUrl: z.string().nullable(),
+        carrier: z.string().nullable(),
+        createdAt: z.string(),
+        updatedAt: z.string(),
+        order: z.object({
+          id: z.string(),
+          userId: z.string(),
+          status: z.string(),
+          totalAmount: z.number(),
+          currency: z.string(),
+          createdAt: z.string(),
+          items: z.array(z.object({
+            id: z.string(),
+            productId: z.string(),
+            productName: z.string(),
+            variantName: z.string().nullable(),
+            quantity: z.number(),
+            unitPrice: z.number(),
+            fulfillmentProvider: z.string().nullable(),
+          })),
+          shippingAddress: z.object({
+            firstName: z.string(),
+            lastName: z.string(),
+            addressLine1: z.string(),
+            city: z.string(),
+            country: z.string(),
+            postCode: z.string(),
+            email: z.string(),
+          }).nullable(),
+        }).nullable(),
+      })),
+      total: z.number(),
+    }))
+    .errors({ UNAUTHORIZED }),
+
+  acceptManualFulfillment: oc
+    .route({
+      method: "POST",
+      path: "/admin/manual-fulfillment/{fulfillmentId}/accept",
+      summary: "Accept a manual fulfillment order",
+      description: "Marks a manual fulfillment as accepted, transitions order to processing.",
+      tags: ["Admin", "Manual Fulfillment"],
+    })
+    .input(z.object({ fulfillmentId: z.string() }))
+    .output(z.object({ success: z.boolean() }))
+    .errors({ NOT_FOUND, UNAUTHORIZED }),
+
+  rejectManualFulfillment: oc
+    .route({
+      method: "POST",
+      path: "/admin/manual-fulfillment/{fulfillmentId}/reject",
+      summary: "Reject a manual fulfillment order",
+      description: "Marks a manual fulfillment as rejected, transitions order to rejected.",
+      tags: ["Admin", "Manual Fulfillment"],
+    })
+    .input(z.object({ fulfillmentId: z.string(), reason: z.string().optional() }))
+    .output(z.object({ success: z.boolean() }))
+    .errors({ NOT_FOUND, UNAUTHORIZED }),
+
+  updateManualFulfillment: oc
+    .route({
+      method: "PATCH",
+      path: "/admin/manual-fulfillment/{fulfillmentId}",
+      summary: "Update a manual fulfillment",
+      description: "Update tracking, notes, or status of a manual fulfillment order.",
+      tags: ["Admin", "Manual Fulfillment"],
+    })
+    .input(z.object({
+      fulfillmentId: z.string(),
+      status: z.enum(["pending", "accepted", "processing", "shipped", "delivered", "rejected", "cancelled"]).optional(),
+      internalNotes: z.string().optional(),
+      trackingCode: z.string().optional(),
+      trackingUrl: z.string().optional(),
+      carrier: z.string().optional(),
+    }))
+    .output(z.object({ success: z.boolean() }))
+    .errors({ NOT_FOUND, UNAUTHORIZED }),
 
   // ─── Admin: Assets ───
 

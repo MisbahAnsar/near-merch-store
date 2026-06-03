@@ -12,11 +12,12 @@ import type {
   FeeConfig,
   ProductMetadata,
 } from "../schema";
-import { OrderStore, ProductStore } from "../store";
+import { OrderStore, ProductStore, ManualFulfillmentStore, ProviderConfigStore } from "../store";
 import type { CreateOrderItem } from "./fulfillment/schema";
 import type { PaymentLineItem } from "./payment/schema";
 import { CheckoutError } from "./checkout/errors";
 import { getProvidersAddressRequirementError } from "./checkout/provider-address-requirements";
+import { nearAccountIdToEmail } from "../utils/near-account";
 
 interface ProviderItemGroup {
   item: CheckoutItemInput;
@@ -181,6 +182,8 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
       Effect.gen(function* () {
         const productStore = yield* ProductStore;
         const orderStore = yield* OrderStore;
+        const manualFulfillmentStore = yield* ManualFulfillmentStore;
+        const providerConfigStore = yield* ProviderConfigStore;
 
         const logDuration = (label: string, startedAt: number) => {
           console.log(`[checkout] ${label} took ${Date.now() - startedAt}ms`);
@@ -777,6 +780,10 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
               providerName,
               providerItems,
             ] of itemsByProvider.entries()) {
+              if (providerName === "manual") {
+                continue;
+              }
+
               const selectedRateId = selectedRates[providerName];
               if (!selectedRateId) {
                 return yield* Effect.fail(
@@ -784,10 +791,6 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
                     `No shipping rate selected for provider: ${providerName}`,
                   ),
                 );
-              }
-
-              if (providerName === "manual") {
-                continue;
               }
 
               const provider = runtime.getProvider(providerName);
@@ -965,6 +968,44 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
             );
 
             yield* orderStore.updateDraftOrderIds(order.id, draftOrderIds);
+
+            const manualFulfillmentItems = itemsByProvider.get("manual") || [];
+            if (manualFulfillmentItems.length > 0) {
+              const manualConfig = yield* providerConfigStore.getConfig('manual');
+              const settings = manualConfig?.settings;
+              const globalNotificationEmails = settings?.notificationEmails ?? [];
+              const globalOwnerAccountIds = settings?.ownerAccountIds ?? [];
+              const autoAccept = settings?.autoAcceptPaidOrders === true;
+
+              const productEmails = manualFulfillmentItems.flatMap((pi) => {
+                const providerDetails = (pi.metadata as Record<string, unknown> | undefined)?.providerDetails as Record<string, unknown> | undefined;
+                const manualDetails = providerDetails?.manual as Record<string, unknown> | undefined;
+                const emails = Array.isArray(manualDetails?.notificationEmails)
+                  ? manualDetails.notificationEmails as string[]
+                  : [];
+                const ownerIds = Array.isArray(manualDetails?.ownerAccountIds)
+                  ? manualDetails.ownerAccountIds as string[]
+                  : [];
+                return [...emails, ...ownerIds.map((id: string) => nearAccountIdToEmail(id)).filter((e): e is string => e !== undefined)];
+              });
+              const configEmails = [
+                ...globalNotificationEmails,
+                ...globalOwnerAccountIds.map((id: string) => nearAccountIdToEmail(id)).filter((e): e is string => e !== undefined),
+              ];
+              const notificationEmails = [...new Set([...configEmails, ...productEmails])];
+
+              const fulfillment = yield* manualFulfillmentStore.create({
+                orderId: order.id,
+                notificationEmails,
+              });
+
+              if (autoAccept) {
+                yield* manualFulfillmentStore.updateStatus(
+                  fulfillment.id,
+                  "accepted",
+                );
+              }
+            }
 
             yield* orderStore.updateStatus(order.id, "draft_created");
 

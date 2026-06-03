@@ -8,6 +8,8 @@ export function getProviderAddressRequirementError(
     return "Phone number is required for delivery";
   }
 
+  // manual and printful do not require phone
+
   return undefined;
 }
 

@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
   CheckCircle,
@@ -65,14 +65,16 @@ export const Route = createFileRoute(
   "/_marketplace/_authenticated/_admin/dashboard/providers"
 )({
   loader: async () => {
-    const [printful, lulu] = await Promise.all([
+    const [printful, lulu, manual] = await Promise.all([
       apiClient.getProviderConfig({ provider: "printful" }),
       apiClient.getProviderConfig({ provider: "lulu" }),
+      apiClient.getProviderConfig({ provider: "manual" }),
     ]);
 
     return {
       printfulConfig: printful.config,
       luluConfig: lulu.config,
+      manualConfig: manual.config,
     };
   },
   errorComponent: ProvidersError,
@@ -104,7 +106,7 @@ function ProvidersPage() {
     );
   }
 
-  const { printfulConfig, luluConfig } = loaderData;
+  const { printfulConfig, luluConfig, manualConfig } = loaderData;
   const configureWebhook = useConfigureWebhook();
   const disableWebhook = useDisableWebhook();
   const testProvider = useTestProvider();
@@ -128,6 +130,26 @@ function ProvidersPage() {
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [luluConfigDialogOpen, setLuluConfigDialogOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [manualNotificationEmails, setManualNotificationEmails] = useState("");
+  const [manualOwnerAccountIds, setManualOwnerAccountIds] = useState("");
+  const [manualAutoAccept, setManualAutoAccept] = useState(false);
+  const [manualLeadTimeMin, setManualLeadTimeMin] = useState("5");
+  const [manualLeadTimeMax, setManualLeadTimeMax] = useState("10");
+  const [manualReplyTo, setManualReplyTo] = useState("");
+  const [manualNotes, setManualNotes] = useState("");
+
+  useEffect(() => {
+    if (manualConfig?.settings) {
+      const s = manualConfig.settings as Record<string, unknown>;
+      setManualNotificationEmails(Array.isArray(s.notificationEmails) ? (s.notificationEmails as string[]).join(", ") : "");
+      setManualOwnerAccountIds(Array.isArray(s.ownerAccountIds) ? (s.ownerAccountIds as string[]).join(", ") : "");
+      setManualAutoAccept(s.autoAcceptPaidOrders === true);
+      setManualLeadTimeMin(String(s.defaultLeadTimeMinDays ?? 5));
+      setManualLeadTimeMax(String(s.defaultLeadTimeMaxDays ?? 10));
+      setManualReplyTo((s.replyToEmail as string) ?? "");
+      setManualNotes((s.notes as string) ?? "");
+    }
+  }, [manualConfig]);
 
   const handleCopyKey = async (key: string, keyType: string) => {
     await navigator.clipboard.writeText(key);
@@ -236,6 +258,50 @@ function ProvidersPage() {
     setSelectedEvents((prev) =>
       prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event]
     );
+  };
+
+  const handleTestManual = async () => {
+    try {
+      const result = await testProvider.mutateAsync({ provider: "manual" });
+      if (result.success) {
+        toast.success("Manual provider is available");
+      } else {
+        toast.error("Manual provider test failed", { description: result.message || "Unknown error" });
+      }
+    } catch (err) {
+      const message = getErrorMessage(err);
+      toast.error("Manual provider test failed", { description: message });
+      console.error("Failed to test manual provider:", err);
+    }
+  };
+
+  const handleSaveManual = async () => {
+    try {
+      await configureWebhook.mutateAsync({
+        provider: "manual",
+        settings: {
+          notificationEmails: manualNotificationEmails
+            .split(",")
+            .map((e: string) => e.trim())
+            .filter(Boolean),
+          ownerAccountIds: manualOwnerAccountIds
+            .split(",")
+            .map((id: string) => id.trim())
+            .filter(Boolean),
+          autoAcceptPaidOrders: manualAutoAccept,
+          defaultLeadTimeMinDays: parseInt(manualLeadTimeMin, 10) || 5,
+          defaultLeadTimeMaxDays: parseInt(manualLeadTimeMax, 10) || 10,
+          replyToEmail: manualReplyTo || undefined,
+          notes: manualNotes || undefined,
+        },
+      });
+      toast.success("Manual provider settings saved");
+      router.invalidate();
+    } catch (err) {
+      const message = getErrorMessage(err);
+      toast.error("Failed to save manual provider settings", { description: message });
+      console.error("Failed to save manual provider settings:", err);
+    }
   };
 
   return (
@@ -680,6 +746,128 @@ function ProvidersPage() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-background border border-emerald-500/30 overflow-hidden">
+        <div className="p-6 border-b border-emerald-500/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <Settings2 className="size-5 text-emerald-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Basic</h3>
+                <p className="text-sm text-foreground/70">Email fulfillment — manual order management with owner notifications</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${manualConfig?.enabled ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-foreground/50"}`}>
+                {manualConfig?.enabled ? <><CheckCircle className="size-3" /> Configured</> : <><XCircle className="size-3" /> Not Configured</>}
+              </span>
+              <button
+                type="button"
+                onClick={handleTestManual}
+                disabled={testProvider.isPending}
+                className="px-3 py-1.5 rounded-md bg-background/60 border border-border/60 text-sm font-medium hover:bg-emerald-500/10 hover:border-emerald-500/40 transition-colors disabled:opacity-50"
+              >
+                {testProvider.isPending ? <Loader2 className="size-4 animate-spin" /> : "Test Connection"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="manual-emails">Notification Emails</Label>
+              <Input
+                id="manual-emails"
+                placeholder="merch@near.foundation, admin@example.com"
+                value={manualNotificationEmails}
+                onChange={(e) => setManualNotificationEmails(e.target.value)}
+                className="bg-background/60 border border-border/60"
+              />
+              <p className="text-xs text-foreground/50">Comma-separated email addresses that receive order notifications</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="manual-owners">Owner Account IDs</Label>
+              <Input
+                id="manual-owners"
+                placeholder="efiz.near, alice.near"
+                value={manualOwnerAccountIds}
+                onChange={(e) => setManualOwnerAccountIds(e.target.value)}
+                className="bg-background/60 border border-border/60"
+              />
+              <p className="text-xs text-foreground/50">NEAR accounts (&#42;.near only) will receive notifications at &#123;account&#125;@near.email</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="manual-reply-to">Reply-To Email</Label>
+              <Input
+                id="manual-reply-to"
+                placeholder="noreply@near.foundation"
+                value={manualReplyTo}
+                onChange={(e) => setManualReplyTo(e.target.value)}
+                className="bg-background/60 border border-border/60"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="manual-notes">Notes</Label>
+              <Input
+                id="manual-notes"
+                placeholder="Internal notes about this provider..."
+                value={manualNotes}
+                onChange={(e) => setManualNotes(e.target.value)}
+                className="bg-background/60 border border-border/60"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="manual-lead-min">Min Lead Time (days)</Label>
+              <Input
+                id="manual-lead-min"
+                type="number"
+                min="0"
+                value={manualLeadTimeMin}
+                onChange={(e) => setManualLeadTimeMin(e.target.value)}
+                className="bg-background/60 border border-border/60"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="manual-lead-max">Max Lead Time (days)</Label>
+              <Input
+                id="manual-lead-max"
+                type="number"
+                min="0"
+                value={manualLeadTimeMax}
+                onChange={(e) => setManualLeadTimeMax(e.target.value)}
+                className="bg-background/60 border border-border/60"
+              />
+            </div>
+            <div className="flex items-end gap-2 pb-1">
+              <Checkbox
+                id="manual-auto-accept"
+                checked={manualAutoAccept}
+                onCheckedChange={(checked) => setManualAutoAccept(checked === true)}
+              />
+              <Label htmlFor="manual-auto-accept" className="text-sm">Auto-accept paid orders</Label>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveManual}
+            disabled={configureWebhook.isPending}
+            className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors disabled:opacity-50"
+          >
+            {configureWebhook.isPending ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+            Save Settings
+          </button>
         </div>
       </div>
 

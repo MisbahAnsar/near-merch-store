@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { Context, Effect, Layer } from 'every-plugin/effect';
 import * as schema from '../db/schema';
-import type { ProviderConfig, ProviderName, ProviderWebhookEventType } from '../schema';
+import type { ProviderConfig, ProviderName, ProviderWebhookEventType, ManualProviderSettings } from '../schema';
 import { Database } from './database';
 
 export class ProviderConfigStore extends Context.Tag('ProviderConfigStore')<
@@ -16,6 +16,7 @@ export class ProviderConfigStore extends Context.Tag('ProviderConfigStore')<
       enabledEvents?: ProviderWebhookEventType[];
       publicKey?: string | null;
       secretKey?: string | null;
+      settings?: ManualProviderSettings | null;
       lastConfiguredAt?: number | null;
       expiresAt?: number | null;
     }) => Effect.Effect<ProviderConfig, Error>;
@@ -32,6 +33,7 @@ const rowToConfig = (row: typeof schema.providerConfigs.$inferSelect): ProviderC
   enabledEvents: row.enabledEvents ?? [],
   publicKey: row.publicKey,
   secretKey: row.secretKey,
+  settings: row.settings ?? undefined,
   lastConfiguredAt: row.lastConfiguredAt?.getTime() ?? null,
   expiresAt: row.expiresAt?.getTime() ?? null,
   createdAt: row.createdAt.toISOString(),
@@ -73,26 +75,27 @@ export const ProviderConfigStoreLive = Layer.effect(
               .where(eq(schema.providerConfigs.provider, config.provider))
               .limit(1);
 
-            if (existing.length > 0) {
-              const row = existing[0]!;
-              await db
-                .update(schema.providerConfigs)
-                .set({
-                  enabled: config.enabled ?? row.enabled,
-                  webhookUrl: config.webhookUrl !== undefined ? config.webhookUrl : row.webhookUrl,
-                  webhookUrlOverride: config.webhookUrlOverride !== undefined ? config.webhookUrlOverride : row.webhookUrlOverride,
-                  enabledEvents: config.enabledEvents ?? row.enabledEvents,
-                  publicKey: config.publicKey !== undefined ? config.publicKey : row.publicKey,
-                  secretKey: config.secretKey !== undefined ? config.secretKey : row.secretKey,
-                  lastConfiguredAt: config.lastConfiguredAt !== undefined
-                    ? (config.lastConfiguredAt ? new Date(config.lastConfiguredAt) : null)
-                    : row.lastConfiguredAt,
-                  expiresAt: config.expiresAt !== undefined
-                    ? (config.expiresAt ? new Date(config.expiresAt) : null)
-                    : row.expiresAt,
-                  updatedAt: now,
-                })
-                .where(eq(schema.providerConfigs.provider, config.provider));
+if (existing.length > 0) {
+          const row = existing[0]!;
+          await db
+            .update(schema.providerConfigs)
+            .set({
+              enabled: config.enabled ?? row.enabled,
+              webhookUrl: config.webhookUrl !== undefined ? config.webhookUrl : row.webhookUrl,
+              webhookUrlOverride: config.webhookUrlOverride !== undefined ? config.webhookUrlOverride : row.webhookUrlOverride,
+              enabledEvents: config.enabledEvents ?? row.enabledEvents,
+              publicKey: config.publicKey !== undefined ? config.publicKey : row.publicKey,
+              secretKey: config.secretKey !== undefined ? config.secretKey : row.secretKey,
+              settings: config.settings !== undefined ? config.settings : row.settings,
+              lastConfiguredAt: config.lastConfiguredAt !== undefined
+                ? (config.lastConfiguredAt ? new Date(config.lastConfiguredAt) : null)
+                : row.lastConfiguredAt,
+              expiresAt: config.expiresAt !== undefined
+                ? (config.expiresAt ? new Date(config.expiresAt) : null)
+                : row.expiresAt,
+              updatedAt: now,
+            })
+            .where(eq(schema.providerConfigs.provider, config.provider));
             } else {
               await db.insert(schema.providerConfigs).values({
                 provider: config.provider,

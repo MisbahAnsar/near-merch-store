@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/utils/orpc';
+import type { ManualProviderSettings } from '../../../../api/src/schema';
 
 export type ProviderConfig = Awaited<ReturnType<typeof apiClient.getProviderConfig>>['config'];
 type ProviderName = Parameters<typeof apiClient.getProviderConfig>[0]['provider'];
 
 type ConfigureWebhookParams = Parameters<typeof apiClient.configureWebhook>[0];
-type ProviderWebhookEventType = ConfigureWebhookParams['events'][number];
-export type PrintfulWebhookEventType = Exclude<ProviderWebhookEventType, 'PRINT_JOB_STATUS_CHANGED'>;
+type ProviderWebhookEventType = NonNullable<ConfigureWebhookParams['events']>[number];
+export type PrintfulWebhookEventType = Exclude<ProviderWebhookEventType, 'PRINT_JOB_STATUS_CHANGED' | 'ORDER_STATUS_CHANGED'>;
 type LuluWebhookEventType = 'PRINT_JOB_STATUS_CHANGED';
 
 const providerKeys = {
@@ -21,8 +22,9 @@ export function useConfigureWebhook() {
     mutationFn: async (params: {
       provider: ProviderName;
       webhookUrlOverride?: string;
-      events: ProviderWebhookEventType[];
+      events?: ProviderWebhookEventType[];
       expiresAt?: string;
+      settings?: ManualProviderSettings;
     }) => {
       return await apiClient.configureWebhook(params);
     },
@@ -92,4 +94,12 @@ export const PRINTFUL_WEBHOOK_EVENTS: { value: PrintfulWebhookEventType; label: 
   { value: 'catalog_stock_updated', label: 'Catalog Stock Updated', description: 'Product stock was updated' },
   { value: 'catalog_price_changed', label: 'Catalog Price Changed', description: 'Product price was changed' },
   { value: 'mockup_task_finished', label: 'Mockup Task Finished', description: 'Mockup generation completed' },
+];
+
+export const MANUAL_WEBHOOK_EVENTS: { value: 'ORDER_STATUS_CHANGED'; label: string; description: string }[] = [
+  {
+    value: 'ORDER_STATUS_CHANGED',
+    label: 'Order Status Changed',
+    description: 'Sent whenever a manual fulfillment order changes status',
+  },
 ];

@@ -32,6 +32,16 @@ export {
   type NewsletterSubscribeStatus,
 } from "./newsletter";
 
+export {
+  ManualFulfillmentStore,
+  ManualFulfillmentStoreLive,
+} from "./manual-fulfillments";
+
+export {
+  ProviderConfigStore,
+  ProviderConfigStoreLive,
+} from "./providers";
+
 export type {
   ProductCriteria,
   ProductWithImages,

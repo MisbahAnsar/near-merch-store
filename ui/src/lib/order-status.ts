@@ -20,6 +20,7 @@ export const ORDER_STATUSES: OrderStatus[] = [
   'partially_cancelled',
   'failed',
   'refunded',
+  'rejected',
 ];
 
 export const statusLabels: Record<OrderStatus, string> = {
@@ -39,6 +40,7 @@ export const statusLabels: Record<OrderStatus, string> = {
   partially_cancelled: 'Partially Cancelled',
   failed: 'Failed',
   refunded: 'Refunded',
+  rejected: 'Rejected',
 };
 
 const adminStatusLabels: Record<OrderStatus, string> = {
@@ -64,6 +66,7 @@ const statusColors: Record<OrderStatus, string> = {
   partially_cancelled: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
   failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
   refunded: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  rejected: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
 };
 
 export function getStatusLabel(status: OrderStatus): string {
