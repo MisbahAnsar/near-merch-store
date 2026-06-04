@@ -106,7 +106,6 @@
         "LULU_CLIENT_SECRET",
         "ACCESS_KEY_ID",
         "SECRET_ACCESS_KEY",
-<<<<<<< HEAD
         "MANUAL_FULFILLMENT_FROM_EMAIL",
         "RESEND_API_KEY"
       ],
