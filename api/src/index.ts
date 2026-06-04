@@ -8,7 +8,19 @@ import { contract } from './contract';
 import { cleanupAbandonedDrafts } from './jobs/cleanup-drafts';
 import { retryPendingConfirmations } from './jobs/retry-confirmations';
 import { createMarketplaceRuntime } from './runtime';
-import { ReturnAddressSchema, type ConfigureWebhookOutput, type OrderStatus, type PrintfulWebhookEventType, type ProductMetadata, type ProviderWebhookEventType, type TrackingInfo } from './schema';
+import { ReturnAddressSchema, type ConfigureWebhookOutput, type OrderStatus, type PrintfulWebhookEventType, type ProductMetadata, type ProviderWebhookEventType, type TrackingInfo, type Product } from './schema';
+
+function sanitizeProductForPublic<T extends Product>(product: T): T {
+  if (product.metadata?.providerDetails?.manual) {
+    const { manual: _, ...restProviderDetails } = product.metadata.providerDetails;
+    const { providerDetails: __, ...restMetadata } = product.metadata;
+    return {
+      ...product,
+      metadata: { ...restMetadata, providerDetails: restProviderDetails },
+    };
+  }
+  return product;
+}
 import { CheckoutService, CheckoutServiceLive } from './services/checkout';
 import { CheckoutError } from './services/checkout/errors';
 import { EmailService, EmailServiceLive } from './services/email';
@@ -343,7 +355,11 @@ export default createPlugin({
           });
         }
 
-        return exit.value;
+        const value = exit.value;
+        return {
+          ...value,
+          products: value.products.map(sanitizeProductForPublic),
+        };
       }),
 
       getProduct: builder.getProduct.handler(async ({ input, errors }) => {
@@ -371,7 +387,7 @@ export default createPlugin({
           throw error;
         }
 
-        return exit.value;
+        return sanitizeProductForPublic(exit.value);
       }),
 
       searchProducts: builder.searchProducts.handler(async ({ input }) => {
@@ -392,7 +408,11 @@ export default createPlugin({
           });
         }
 
-        return exit.value;
+        const value = exit.value;
+        return {
+          ...value,
+          products: value.products.map(sanitizeProductForPublic),
+        };
       }),
 
       getFeaturedProducts: builder.getFeaturedProducts.handler(
@@ -414,7 +434,11 @@ export default createPlugin({
             });
           }
 
-          return exit.value;
+          const value = exit.value;
+          return {
+            ...value,
+            products: value.products.map(sanitizeProductForPublic),
+          };
         },
       ),
 
@@ -465,7 +489,11 @@ export default createPlugin({
             throw error;
           }
 
-          return exit.value;
+          const value = exit.value;
+          return {
+            ...value,
+            products: value.products.map(sanitizeProductForPublic),
+          };
         },
       ),
 
