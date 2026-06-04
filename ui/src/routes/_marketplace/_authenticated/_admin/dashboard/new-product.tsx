@@ -209,7 +209,7 @@ function NewProductInner({
                 ? ("primary" as const)
                 : i === 0
                   ? ("primary" as const)
-                  : ("detail" as const),
+                  : ("preview" as const),
               order: i,
             }));
 

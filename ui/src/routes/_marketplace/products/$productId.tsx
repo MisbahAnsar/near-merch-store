@@ -283,15 +283,23 @@ function ProductDetailPage() {
 
   // Determine display images (filter out 'detail' type/blueprints and 'mockup' type)
   // Keep a STABLE order - don't reorder when variant changes
-  // Use only variant images (images with variantIds)
+  // Prefer variant images (with variantIds), but fall back to primary/preview/catalog images without variantIds
   const validImages = useMemo(
-    () => product.images.filter(
-      (img: ProductImage) => 
-        img.type !== "detail" && 
-        img.type !== "mockup" &&
-        img.variantIds && 
-        img.variantIds.length > 0
-    ),
+    () => {
+      const variantImages = product.images.filter(
+        (img: ProductImage) =>
+          img.type !== "detail" &&
+          img.type !== "mockup" &&
+          img.variantIds &&
+          img.variantIds.length > 0
+      );
+      if (variantImages.length > 0) return variantImages;
+      return product.images.filter(
+        (img: ProductImage) =>
+          img.type !== "detail" &&
+          img.type !== "mockup"
+      );
+    },
     [product.images]
   );
 
