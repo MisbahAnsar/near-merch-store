@@ -165,4 +165,62 @@ describe('handleOrderPaidEffect', () => {
     expect(notifications[0]?.body).toContain('123 Main St');
     expect(notifications[0]?.body).toContain('john@example.com');
   });
+
+  it('does not send manual notifications when the manual provider is disabled', async () => {
+    const confirmOrder = vi.fn().mockResolvedValue({ id: 'printful_draft_123' });
+    const notifications: Array<{
+      to: string[];
+      subject: string;
+      body: string;
+      replyTo?: string;
+    }> = [];
+
+    const layer = Layer.mergeAll(
+      Layer.succeed(OrderStore, {} as any),
+      Layer.succeed(ProviderConfigStore, {
+        getConfig: () =>
+          Effect.succeed({
+            provider: 'manual',
+            enabled: false,
+            webhookUrl: null,
+            webhookUrlOverride: null,
+            enabledEvents: [],
+            publicKey: null,
+            secretKey: null,
+            settings: {
+              notificationEmails: ['ops@nearmerch.com'],
+              ownerAccountIds: ['owner.near'],
+              replyToEmail: 'support@nearmerch.com',
+            },
+            lastConfiguredAt: null,
+            expiresAt: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }),
+      } as any),
+      Layer.succeed(EmailService, {
+        sendNotification: (notification) =>
+          Effect.sync(() => {
+            notifications.push(notification);
+          }),
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      handleOrderPaidEffect({
+        runtime: createRuntime(confirmOrder),
+        order: createOrder(),
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(confirmOrder).toHaveBeenCalledWith({ id: 'printful_draft_123' });
+    expect(result).toEqual({
+      allProviderConfirmationsSucceeded: true,
+      confirmationResults: {
+        manual: { success: true },
+        printful: { success: true },
+      },
+    });
+    expect(notifications).toHaveLength(0);
+  });
 });

@@ -64,6 +64,16 @@ export function handleOrderPaidEffect(options: {
     if (hasManualItems) {
       try {
         const manualConfig = yield* providerConfigStore.getConfig('manual');
+
+        if (!manualConfig?.enabled) {
+          const allSuccess = Object.values(confirmationResults).every((r) => r.success);
+
+          return {
+            allProviderConfirmationsSucceeded: allSuccess,
+            confirmationResults,
+          };
+        }
+
         const settings = manualConfig?.settings as Record<string, unknown> | undefined;
         const globalEmails: string[] = Array.isArray(settings?.notificationEmails) ? (settings!.notificationEmails as string[]) : [];
         const globalOwnerIds: string[] = Array.isArray(settings?.ownerAccountIds) ? (settings!.ownerAccountIds as string[]) : [];

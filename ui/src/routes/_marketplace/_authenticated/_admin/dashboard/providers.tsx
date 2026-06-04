@@ -816,12 +816,14 @@ function ProvidersPage() {
 
       <div className="rounded-2xl bg-background border border-border/60 p-4">
         <h4 className="font-semibold text-foreground mb-2">
-          About Webhooks
+          About Provider Settings
         </h4>
         <p className="text-sm text-foreground/90 dark:text-muted-foreground">
-          Webhooks allow fulfillment providers to send real-time notifications to your store when 
-          order events occur (shipments, cancellations, etc.). The secret key is stored 
-          securely and used to verify webhook signatures.
+          Configure how each fulfillment provider connects to your store. Printful and Lulu use
+          webhooks for real-time order updates (shipments, cancellations, etc.). The Basic
+          provider sends email notifications to the addresses you specify when a manual order
+          is placed. Secret keys are stored securely and used to verify incoming webhook
+          signatures where applicable.
         </p>
       </div>
     </div>

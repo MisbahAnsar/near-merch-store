@@ -315,12 +315,12 @@ function AdminOrdersPage() {
     }
     if (!search) return result;
     const term = search.toLowerCase();
-    return orders.filter(
+    return result.filter(
       (order) =>
         order.id.toLowerCase().includes(term) ||
         order.userId.toLowerCase().includes(term)
     );
-  }, [orders, search]);
+  }, [orders, search, filterManual]);
 
   const selectedOrders = useMemo(() => {
     const selectedIndices = Object.keys(rowSelection).filter(key => rowSelection[key]);

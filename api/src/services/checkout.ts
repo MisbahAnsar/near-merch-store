@@ -41,12 +41,19 @@ function getManualNotificationConfig(metadata?: ProductMetadata) {
     return undefined;
   }
 
+  const notificationEmails = Array.isArray(manualDetails.notificationEmails)
+    ? manualDetails.notificationEmails
+    : [];
+  const ownerAccountIds = Array.isArray(manualDetails.ownerAccountIds)
+    ? manualDetails.ownerAccountIds
+    : [];
+
   return {
-    ...(manualDetails.notificationEmails.length > 0
-      ? { notificationEmails: manualDetails.notificationEmails }
+    ...(notificationEmails.length > 0
+      ? { notificationEmails }
       : {}),
-    ...(manualDetails.ownerAccountIds.length > 0
-      ? { ownerAccountIds: manualDetails.ownerAccountIds }
+    ...(ownerAccountIds.length > 0
+      ? { ownerAccountIds }
       : {}),
   };
 }

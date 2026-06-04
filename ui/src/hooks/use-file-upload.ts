@@ -28,11 +28,15 @@ export function useFileUpload(prefix: string = "assets") {
               prefix,
             });
 
-            await fetch(uploadReq.presignedUrl, {
+            const uploadRes = await fetch(uploadReq.presignedUrl, {
               method: "PUT",
               body: file,
               headers: { "Content-Type": file.type || "image/png" },
             });
+
+            if (!uploadRes.ok) {
+              throw new Error(`Upload failed with status ${uploadRes.status}`);
+            }
 
             const asset = await confirmUpload.mutateAsync({
               key: uploadReq.key,

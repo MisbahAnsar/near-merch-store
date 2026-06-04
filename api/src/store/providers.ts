@@ -130,10 +130,12 @@ if (existing.length > 0) {
             await db
               .update(schema.providerConfigs)
               .set({
+                enabled: false,
                 webhookUrl: null,
                 enabledEvents: null,
                 publicKey: null,
                 secretKey: null,
+                settings: null,
                 lastConfiguredAt: null,
                 expiresAt: null,
                 updatedAt: new Date(),

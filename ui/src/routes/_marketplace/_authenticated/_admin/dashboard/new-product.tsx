@@ -635,6 +635,7 @@ function BasicBuilder({
                         type="button"
                         onClick={() => handleMoveImage(index, "up")}
                         disabled={index === 0}
+                        aria-label="Move image up"
                         className="p-0.5 text-foreground/30 hover:text-foreground/70 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 15l-6-6-6 6"/></svg>
@@ -643,6 +644,7 @@ function BasicBuilder({
                         type="button"
                         onClick={() => handleMoveImage(index, "down")}
                         disabled={index === form.basicImages.length - 1}
+                        aria-label="Move image down"
                         className="p-0.5 text-foreground/30 hover:text-foreground/70 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
@@ -651,6 +653,7 @@ function BasicBuilder({
                     <button
                       type="button"
                       onClick={() => handleRemoveImage(index)}
+                      aria-label="Remove image"
                       className="p-1 text-foreground/30 hover:text-red-500 transition-colors"
                     >
                       <X className="size-3.5" />
@@ -735,6 +738,7 @@ function BasicBuilder({
                   <button
                     type="button"
                     onClick={() => removeVariant(i)}
+                    aria-label="Remove variant"
                     className="p-1 mt-4 text-foreground/30 hover:text-red-500 transition-colors"
                   >
                     <Trash2 className="size-4" />
@@ -916,7 +920,12 @@ function CatalogBuilder({
           providerName={form.providerName}
           catalogProductId={form.catalogProductId}
           catalogSearch={form.catalogSearch}
-          onSelectProduct={(id) => setField("catalogProductId", id)}
+          onSelectProduct={(id) => setForm((prev) => ({
+            ...prev,
+            catalogProductId: id,
+            selectedVariantIds: prev.catalogProductId === id ? prev.selectedVariantIds : new Set(),
+            designFiles: prev.catalogProductId === id ? prev.designFiles : [],
+          }))}
           onSearchChange={(q) => setField("catalogSearch", q)}
         />
 
