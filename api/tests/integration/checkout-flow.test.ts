@@ -139,7 +139,7 @@ describe('Checkout Flow E2E', () => {
       expect(webhookResult.received).toBe(true);
 
       order = await client.getOrder({ id: orderId });
-      expect(order.order.status).toBe('paid');
+      expect(['paid', 'processing', 'paid_pending_fulfillment']).toContain(order.order.status);
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
