@@ -387,7 +387,7 @@ export default createPlugin({
           throw error;
         }
 
-        return sanitizeProductForPublic(exit.value);
+        return { product: sanitizeProductForPublic(exit.value.product) };
       }),
 
       searchProducts: builder.searchProducts.handler(async ({ input }) => {

@@ -82,7 +82,7 @@ function ImageCard({
         alt={img.altText || `Product image ${index + 1}`}
         className="w-full h-full object-cover"
       />
-      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2" onPointerDown={(e) => e.stopPropagation()}>
         <button
           type="button"
           onClick={onSetThumbnail}
@@ -110,7 +110,7 @@ function ImageCard({
           {IMAGE_TYPE_LABELS[img.type]}
         </span>
       </div>
-      <div className="absolute bottom-1 left-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute bottom-1 left-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity" onPointerDown={(e) => e.stopPropagation()}>
         <Select value={img.type} onValueChange={(val: ImageType) => onChangeType(val)}>
           <SelectTrigger className="h-6 w-full text-[10px] bg-black/80 text-white border-0 hover:bg-black/90 rounded px-1.5">
             <SelectValue />
