@@ -2446,8 +2446,9 @@ export default createPlugin({
           );
           if (Exit.isFailure(exit)) {
             const error = Cause.squash(exit.cause);
-            throw new ORPCError('NOT_FOUND', {
-              message: error instanceof Error ? error.message : String(error),
+            console.error('[confirmAssetUpload] Failed:', error instanceof Error ? error.message : String(error), error instanceof Error ? error.cause : '');
+            throw new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: `Failed to create asset: ${error instanceof Error ? error.message : String(error)}`,
             });
           }
           return exit.value;

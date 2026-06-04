@@ -55,7 +55,6 @@
     "db:restore": "bash scripts/db-restore.sh",
     "db:backup:remote": "bash scripts/db-backup-remote.sh",
     "db:restore:remote": "bash scripts/db-restore-remote.sh",
-    "db:verify-migration": "bash scripts/db-verify-migration.sh",
     "deploy": "DEPLOY=true rspack build"
   }
 }

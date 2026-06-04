@@ -92,6 +92,13 @@
       "when": 1777919800000,
       "tag": "0012_add_provider_configs_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1778024400000,
+      "tag": "0013_repair_assets_storage_columns",
+      "breakpoints": true
     }
   ]
 }
