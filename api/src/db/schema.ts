@@ -13,6 +13,7 @@ import type {
   ProviderWebhookEventType,
   ProductOption,
   ProductMetadata,
+  ManualProviderSettings as ManualProviderSettingsType,
 } from "../schema";
 import type { FulfillmentFile } from "../services/fulfillment/schema";
 
@@ -387,6 +388,7 @@ export const providerConfigs = pgTable("provider_configs", {
   enabledEvents: jsonb("enabled_events").$type<ProviderWebhookEventType[]>(),
   publicKey: text("public_key"),
   secretKey: text("secret_key"),
+  settings: jsonb("settings").$type<ManualProviderSettingsType>(),
   lastConfiguredAt: timestamp("last_configured_at", {
     withTimezone: true,
     mode: "date",
@@ -399,6 +401,8 @@ export const providerConfigs = pgTable("provider_configs", {
     .notNull()
     .defaultNow(),
 });
+
+
 
 export const newsletterSubscriptions = pgTable(
   "newsletter_subscriptions",

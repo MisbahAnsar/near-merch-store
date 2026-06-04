@@ -5,6 +5,7 @@ import type { SyncProgressEvent } from './services/fulfillment/schema';
 import type { ProductWithImages, Product } from './schema';
 import PrintfulPlugin from './services/fulfillment/printful';
 import LuluPlugin from './services/fulfillment/lulu';
+import ManualPlugin from './services/fulfillment/manual';
 import { PaymentContract } from './services/payment';
 import PingPayPlugin from './services/payment/pingpay';
 import StripePlugin from './services/payment/stripe';
@@ -27,6 +28,10 @@ export interface FulfillmentConfig {
 		clientKey: string;
 		clientSecret: string;
 		environment?: 'sandbox' | 'production';
+	};
+	manual?: {
+		notificationEmails?: string[];
+		fromEmail?: string;
 	};
 }
 
@@ -99,6 +104,7 @@ export async function createMarketplaceRuntime(
 		registry: {
 			printful: { module: PrintfulPlugin },
 			lulu: { module: LuluPlugin },
+			manual: { module: ManualPlugin },
 			stripe: { module: StripePlugin },
 			pingpay: { module: PingPayPlugin },
 			'legion-holder': { module: LegionHolderPlugin },
@@ -158,6 +164,40 @@ export async function createMarketplaceRuntime(
 			console.log('[MarketplaceRuntime] Lulu provider initialized');
 		} catch (error) {
 			console.error('[MarketplaceRuntime] Failed to initialize Lulu:', error);
+		}
+	}
+
+	if (fulfillmentConfig.manual) {
+		try {
+			const manual = await runtime.usePlugin('manual', {
+				variables: {},
+				secrets: {
+					MANUAL_FULFILLMENT_FROM_EMAIL: fulfillmentConfig.manual.fromEmail ?? '',
+				},
+			});
+			providers.push({
+				name: 'manual',
+				client: manual.createClient(),
+				router: manual.router,
+			});
+			console.log('[MarketplaceRuntime] Manual provider initialized');
+		} catch (error) {
+			console.error('[MarketplaceRuntime] Failed to initialize Manual provider:', error);
+		}
+	} else {
+		try {
+			const manual = await runtime.usePlugin('manual', {
+				variables: {},
+				secrets: {},
+			});
+			providers.push({
+				name: 'manual',
+				client: manual.createClient(),
+				router: manual.router,
+			});
+			console.log('[MarketplaceRuntime] Manual provider initialized (no config)');
+		} catch (error) {
+			console.error('[MarketplaceRuntime] Failed to initialize Manual provider:', error);
 		}
 	}
 
@@ -271,6 +311,7 @@ export async function createMarketplaceRuntime(
 		paymentProviders,
 		exclusiveCheckProviders,
 		storageProviders,
+		fulfillmentConfig,
 		getProvider: (name: string) => providers.find((p) => p.name === name) ?? null,
 		getPaymentProvider: (name: string) => paymentProviders.find((p) => p.name === name) ?? null,
 		getExclusiveCheckProvider: (name: string) => exclusiveCheckProviders.find((p) => p.name === name) ?? null,
@@ -284,6 +325,7 @@ export interface MarketplaceRuntime {
 	readonly paymentProviders: PaymentProvider[];
 	readonly exclusiveCheckProviders: ExclusiveCheckProvider[];
 	readonly storageProviders: StorageProvider[];
+	readonly fulfillmentConfig: FulfillmentConfig;
 	readonly getProvider: (name: string) => FulfillmentProvider | null;
 	readonly getPaymentProvider: (name: string) => PaymentProvider | null;
 	readonly getExclusiveCheckProvider: (name: string) => ExclusiveCheckProvider | null;

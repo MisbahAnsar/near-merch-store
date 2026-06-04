@@ -166,6 +166,7 @@ export const OrderStoreLive = Layer.effect(
               totalAmount: Math.round(input.totalAmount * 100),
               currency: input.currency,
               shippingMethod: input.shippingMethod || null,
+              shippingAddress: input.shippingAddress || null,
               fulfillmentReferenceId,
               createdAt: now,
               updatedAt: now,

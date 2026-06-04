@@ -541,7 +541,7 @@ export const contract = oc.router({
         "Returns the configuration for a fulfillment provider including webhook settings.",
       tags: ["Admin", "Providers"],
     })
-    .input(z.object({ provider: z.enum(['printful', 'lulu']) }))
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']) }))
     .output(z.object({ config: ProviderConfigSchema.nullable() }))
     .errors({ UNAUTHORIZED }),
 
@@ -566,7 +566,7 @@ export const contract = oc.router({
       description: "Disables webhook notifications for a fulfillment provider.",
       tags: ["Admin", "Providers"],
     })
-    .input(z.object({ provider: z.enum(['printful', 'lulu']) }))
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']) }))
     .output(z.object({ success: z.boolean() }))
     .errors({ BAD_REQUEST, UNAUTHORIZED }),
 
@@ -578,7 +578,7 @@ export const contract = oc.router({
       description: "Tests the connection to a fulfillment provider.",
       tags: ["Admin", "Providers"],
     })
-    .input(z.object({ provider: z.enum(['printful', 'lulu']) }))
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']) }))
     .output(z.object({
       success: z.boolean(),
       message: z.string().optional(),
@@ -595,7 +595,7 @@ export const contract = oc.router({
         "Returns field configurations for each fulfillment provider, used to display product details.",
       tags: ["Admin", "Providers"],
     })
-    .input(z.object({ provider: z.enum(['printful', 'lulu']).optional() }))
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']).optional() }))
     .output(z.record(z.string(), z.any()))
     .errors({ UNAUTHORIZED }),
 
@@ -866,7 +866,7 @@ export const contract = oc.router({
       tags: ["Admin", "Catalog"],
     })
     .input(z.object({
-      provider: z.enum(["printful", "lulu"]),
+      provider: z.enum(["printful", "lulu", "manual"]),
       limit: z.number().int().positive().max(100).default(50),
       offset: z.number().int().min(0).default(0),
     }))
@@ -885,7 +885,7 @@ export const contract = oc.router({
       tags: ["Admin", "Catalog"],
     })
     .input(z.object({
-      provider: z.enum(["printful", "lulu"]),
+      provider: z.enum(["printful", "lulu", "manual"]),
       id: z.string(),
     }))
     .output(z.object({
@@ -902,7 +902,7 @@ export const contract = oc.router({
       tags: ["Admin", "Catalog"],
     })
     .input(z.object({
-      provider: z.enum(["printful", "lulu"]),
+      provider: z.enum(["printful", "lulu", "manual"]),
       id: z.string(),
     }))
     .output(z.object({
@@ -919,7 +919,7 @@ export const contract = oc.router({
       tags: ["Admin", "Fulfillment"],
     })
     .input(z.object({
-      provider: z.enum(["printful", "lulu"]),
+      provider: z.enum(["printful", "lulu", "manual"]),
       catalogProductId: z.string(),
     }))
     .output(z.object({

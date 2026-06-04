@@ -166,6 +166,11 @@ export async function clearCollections() {
   await db.delete(schema.collections);
 }
 
+export async function clearProviderConfigs() {
+  const db = getTestDb();
+  await db.delete(schema.providerConfigs);
+}
+
 export async function addProductToCollection(productId: string, collectionSlug: string) {
   const db = getTestDb();
   await db.insert(schema.productCollections).values({

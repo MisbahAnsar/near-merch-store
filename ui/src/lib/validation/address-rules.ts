@@ -34,9 +34,11 @@ export const PROVIDER_ADDRESS_RULES: Record<string, ProviderRules> = {
       errorMessage: 'ZIP/Postal code is too long.',
     },
   },
-  
+
   printful: {},
-  
+
+  manual: {},
+
   gelato: {},
 };
 

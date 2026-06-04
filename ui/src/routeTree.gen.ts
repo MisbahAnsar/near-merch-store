@@ -39,6 +39,7 @@ import { Route as MarketplaceAuthenticatedAdminDashboardUsersRouteImport } from 
 import { Route as MarketplaceAuthenticatedAdminDashboardProvidersRouteImport } from './routes/_marketplace/_authenticated/_admin/dashboard/providers'
 import { Route as MarketplaceAuthenticatedAdminDashboardOrdersRouteImport } from './routes/_marketplace/_authenticated/_admin/dashboard/orders'
 import { Route as MarketplaceAuthenticatedAdminDashboardNewProductRouteImport } from './routes/_marketplace/_authenticated/_admin/dashboard/new-product'
+
 import { Route as MarketplaceAuthenticatedAdminDashboardInventoryRouteImport } from './routes/_marketplace/_authenticated/_admin/dashboard/inventory'
 import { Route as MarketplaceAuthenticatedAdminDashboardCollectionsRouteImport } from './routes/_marketplace/_authenticated/_admin/dashboard/collections'
 import { Route as MarketplaceAuthenticatedAdminDashboardInventoryProductIdRouteImport } from './routes/_marketplace/_authenticated/_admin/dashboard/inventory/$productId'
@@ -635,33 +636,33 @@ declare module '@tanstack/react-router' {
       parentRoute: typeof MarketplaceAuthenticatedAdminRoute
     }
     '/_marketplace/_authenticated/_admin/dashboard/new-product': {
-      id: '/_marketplace/_authenticated/_admin/dashboard/new-product'
-      path: '/dashboard/new-product'
-      fullPath: '/dashboard/new-product'
-      preLoaderRoute: typeof MarketplaceAuthenticatedAdminDashboardNewProductRouteImport
-      parentRoute: typeof MarketplaceAuthenticatedAdminRoute
-    }
+      id: '/_marketplace/_authenticated/_admin/dashboard/new-product',
+      path: '/dashboard/new-product',
+      fullPath: '/dashboard/new-product',
+      preLoaderRoute: typeof MarketplaceAuthenticatedAdminDashboardNewProductRouteImport,
+      parentRoute: typeof MarketplaceAuthenticatedAdminRoute,
+    },
     '/_marketplace/_authenticated/_admin/dashboard/inventory': {
-      id: '/_marketplace/_authenticated/_admin/dashboard/inventory'
-      path: '/dashboard/inventory'
-      fullPath: '/dashboard/inventory'
-      preLoaderRoute: typeof MarketplaceAuthenticatedAdminDashboardInventoryRouteImport
-      parentRoute: typeof MarketplaceAuthenticatedAdminRoute
-    }
+      id: '/_marketplace/_authenticated/_admin/dashboard/inventory',
+      path: '/dashboard/inventory',
+      fullPath: '/dashboard/inventory',
+      preLoaderRoute: typeof MarketplaceAuthenticatedAdminDashboardInventoryRouteImport,
+      parentRoute: typeof MarketplaceAuthenticatedAdminRoute,
+    },
     '/_marketplace/_authenticated/_admin/dashboard/collections': {
-      id: '/_marketplace/_authenticated/_admin/dashboard/collections'
-      path: '/dashboard/collections'
-      fullPath: '/dashboard/collections'
-      preLoaderRoute: typeof MarketplaceAuthenticatedAdminDashboardCollectionsRouteImport
-      parentRoute: typeof MarketplaceAuthenticatedAdminRoute
-    }
+      id: '/_marketplace/_authenticated/_admin/dashboard/collections',
+      path: '/dashboard/collections',
+      fullPath: '/dashboard/collections',
+      preLoaderRoute: typeof MarketplaceAuthenticatedAdminDashboardCollectionsRouteImport,
+      parentRoute: typeof MarketplaceAuthenticatedAdminRoute,
+    },
     '/_marketplace/_authenticated/_admin/dashboard/inventory/$productId': {
-      id: '/_marketplace/_authenticated/_admin/dashboard/inventory/$productId'
-      path: '/$productId'
-      fullPath: '/dashboard/inventory/$productId'
-      preLoaderRoute: typeof MarketplaceAuthenticatedAdminDashboardInventoryProductIdRouteImport
-      parentRoute: typeof MarketplaceAuthenticatedAdminDashboardInventoryRoute
-    }
+      id: '/_marketplace/_authenticated/_admin/dashboard/inventory/$productId',
+      path: '/$productId',
+      fullPath: '/dashboard/inventory/$productId',
+      preLoaderRoute: typeof MarketplaceAuthenticatedAdminDashboardInventoryProductIdRouteImport,
+      parentRoute: typeof MarketplaceAuthenticatedAdminDashboardInventoryRoute,
+    },
   }
 }
 

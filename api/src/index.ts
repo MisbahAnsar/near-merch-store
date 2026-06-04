@@ -11,6 +11,7 @@ import { createMarketplaceRuntime } from './runtime';
 import { ReturnAddressSchema, type ConfigureWebhookOutput, type OrderStatus, type PrintfulWebhookEventType, type ProductMetadata, type ProviderWebhookEventType, type TrackingInfo } from './schema';
 import { CheckoutService, CheckoutServiceLive } from './services/checkout';
 import { CheckoutError } from './services/checkout/errors';
+import { EmailService, EmailServiceLive } from './services/email';
 import { ProductService, ProductServiceLive } from './services/products';
 import { ProductBuilderService, ProductBuilderServiceLive } from './services/product-builder';
 import { AssetService, AssetServiceLive } from './services/assets';
@@ -21,6 +22,7 @@ import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
 import { computePrintfulUpdate, parsePrintfulWebhook, verifyPrintfulWebhookSignature } from './services/fulfillment/printful/webhook';
 import { handlePingPayWebhookEffect } from './services/payment/pingpay/webhook';
+import { handleOrderPaidEffect } from './services/order-paid';
 export * from './schema';
 
 
@@ -51,6 +53,8 @@ export default createPlugin({
     PING_WEBHOOK_SECRET: z.string().optional(),
     ACCESS_KEY_ID: z.string().optional(),
     SECRET_ACCESS_KEY: z.string().optional(),
+    MANUAL_FULFILLMENT_FROM_EMAIL: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
     API_DATABASE_URL: z.string().default("file:./marketplace.db"),
     API_DATABASE_AUTH_TOKEN: z.string().optional(),
   }),
@@ -105,6 +109,10 @@ export default createPlugin({
                   environment: config.variables.luluEnvironment,
                 }
                 : undefined,
+            manual: {
+              notificationEmails: [],
+              fromEmail: config.secrets.MANUAL_FULFILLMENT_FROM_EMAIL,
+            },
           },
           {
             stripe:
@@ -139,6 +147,11 @@ export default createPlugin({
 
       const dbLayer = DatabaseLive(config.secrets.API_DATABASE_URL);
 
+      const emailServiceLayer = EmailServiceLive({
+        fromEmail: config.secrets.MANUAL_FULFILLMENT_FROM_EMAIL || 'orders@nearmerch.com',
+        resendApiKey: config.secrets.RESEND_API_KEY,
+      });
+
       const storesLayer = Layer.provideMerge(
         Layer.mergeAll(
           ProductStoreLive,
@@ -159,6 +172,7 @@ export default createPlugin({
           NewsletterServiceLive,
           AssetServiceLive,
           ProductBuilderServiceLive(runtime),
+          emailServiceLayer,
         ),
         storesLayer,
       );
@@ -693,7 +707,7 @@ export default createPlugin({
 
               throw new ORPCError("INTERNAL_SERVER_ERROR", {
                 message:
-                  "Order Failed, please contact support (merch@near.foundation)",
+                  "Order Failed, please contact support (orders@nearmerch.com)",
               });
             }
 
@@ -1096,7 +1110,7 @@ export default createPlugin({
 
               if (deleteResult.deleted > 0) {
                 deleted++;
-              } else {
+            } else {
                 errors.push(...deleteResult.errors);
               }
             } catch (err) {
@@ -1126,7 +1140,6 @@ export default createPlugin({
         if (event.type === "checkout.session.completed") {
           const session = event.data.object;
           const orderId = session.metadata?.orderId;
-          const draftOrderIdsJson = session.metadata?.draftOrderIds;
 
           if (!orderId) {
             return { received: true };
@@ -1160,68 +1173,12 @@ export default createPlugin({
             }),
           );
 
-          if (!draftOrderIdsJson) {
-            return { received: true };
-          }
-
           try {
-            const draftOrderIds = JSON.parse(draftOrderIdsJson) as Record<
-              string,
-              string
-            >;
-            const confirmationResults: Record<
-              string,
-              { success: boolean; error?: string }
-            > = {};
-
-            for (const [providerName, draftId] of Object.entries(
-              draftOrderIds,
-            )) {
-              if (providerName === "manual") {
-                continue;
-              }
-
-              const provider = runtime.getProvider(providerName);
-              if (!provider) {
-                confirmationResults[providerName] = {
-                  success: false,
-                  error: "Provider not configured",
-                };
-                continue;
-              }
-
-              const confirmEffect = Effect.tryPromise({
-                try: () => provider.client.confirmOrder({ id: draftId }),
-                catch: (error) =>
-                  new Error(
-                    `Failed to confirm order at ${providerName}: ${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
-                  ),
-              }).pipe(
-                Effect.retry({
-                  times: 3,
-                  schedule: Schedule.exponential("100 millis"),
-                }),
-              );
-
-              try {
-                const result = await managedRuntime.runPromise(confirmEffect);
-                confirmationResults[providerName] = { success: true };
-              } catch (error) {
-                const errorMessage =
-                  error instanceof Error ? error.message : String(error);
-                confirmationResults[providerName] = {
-                  success: false,
-                  error: errorMessage,
-                };
-              }
-            }
-
-            const allSuccess = Object.values(confirmationResults).every(
-              (r) => r.success,
+            const paidResult = await managedRuntime.runPromise(
+              handleOrderPaidEffect({ runtime, order }),
             );
-            const finalStatus = allSuccess
+
+            const finalStatus: OrderStatus = paidResult.allProviderConfirmationsSucceeded
               ? "processing"
               : "paid_pending_fulfillment";
 
@@ -1232,8 +1189,8 @@ export default createPlugin({
                   orderId,
                   finalStatus,
                   "service:stripe",
-                  `fulfillment:${allSuccess ? "confirmed" : "partial"}`,
-                  { confirmationResults, allSuccess },
+                  `fulfillment:${paidResult.allProviderConfirmationsSucceeded ? "confirmed" : "partial"}`,
+                  { confirmationResults: paidResult.confirmationResults, allSuccess: paidResult.allProviderConfirmationsSucceeded },
                 );
               }),
             );
@@ -1714,7 +1671,7 @@ export default createPlugin({
               const printfulResult = await managedRuntime.runPromise(
                 printfulService.configureWebhooks({
                   defaultUrl: webhookUrl,
-                  events: input.events.filter((event): event is PrintfulWebhookEventType => event !== 'PRINT_JOB_STATUS_CHANGED'),
+                  events: (input.events ?? []).filter((event): event is PrintfulWebhookEventType => event !== 'PRINT_JOB_STATUS_CHANGED'),
                   expiresAt: input.expiresAt,
                 })
               );
@@ -1726,7 +1683,7 @@ export default createPlugin({
                 expiresAt: printfulResult.expiresAt,
               };
               providerSecretKey = printfulResult.secretKey;
-            } else {
+            } else if (input.provider === 'lulu') {
               const luluProvider = runtime.getProvider('lulu');
               if (!luluProvider) {
                 throw new ORPCError('BAD_REQUEST', { message: 'Lulu provider not configured' });
@@ -1753,6 +1710,17 @@ export default createPlugin({
                 publicKey: luluResult.publicKey,
                 expiresAt: luluResult.expiresAt,
               };
+            } else if (input.provider === 'manual') {
+              result = {
+                success: true,
+                webhookUrl: '',
+                enabledEvents: [],
+                publicKey: null,
+                expiresAt: null,
+                settings: input.settings,
+              };
+            } else {
+              throw new ORPCError('BAD_REQUEST', { message: `Unknown provider: ${input.provider}` });
             }
           } catch (error) {
             console.error(`[configureWebhook] Failed to configure ${input.provider} webhooks:`, error);
@@ -1774,6 +1742,7 @@ export default createPlugin({
                   enabledEvents: result.enabledEvents,
                   publicKey: result.publicKey,
                   secretKey: providerSecretKey,
+                  settings: result.settings ?? undefined,
                   lastConfiguredAt: Date.now(),
                   expiresAt: result.expiresAt,
                 });
@@ -1818,7 +1787,7 @@ export default createPlugin({
               );
 
               await managedRuntime.runPromise(printfulService.disableWebhooks());
-            } else {
+            } else if (input.provider === 'lulu') {
               const luluProvider = runtime.getProvider('lulu');
               if (!luluProvider || !secrets.LULU_CLIENT_KEY || !secrets.LULU_CLIENT_SECRET) {
                 throw new ORPCError('BAD_REQUEST', { message: 'Lulu provider not configured' });
@@ -1839,6 +1808,10 @@ export default createPlugin({
               });
 
               await managedRuntime.runPromise(luluService.disableWebhooks(existingConfig?.webhookUrl));
+            } else if (input.provider === 'manual') {
+              // Manual provider has no webhook to disable — no-op
+            } else {
+              throw new ORPCError('BAD_REQUEST', { message: `Unknown provider: ${input.provider}` });
             }
           } catch (error) {
             console.error(`[disableWebhook] Failed to disable ${input.provider} webhooks:`, error);
@@ -1888,7 +1861,7 @@ export default createPlugin({
                 secrets.PRINTFUL_STORE_ID!
               );
               result = await managedRuntime.runPromise(printfulService.ping());
-            } else {
+            } else if (input.provider === 'lulu') {
               if (!runtime.getProvider('lulu') || !secrets.LULU_CLIENT_KEY || !secrets.LULU_CLIENT_SECRET) {
                 throw new ORPCError('BAD_REQUEST', { message: 'Lulu provider not configured' });
               }
@@ -1900,6 +1873,14 @@ export default createPlugin({
                 environment: luluEnvironment,
               });
               result = await managedRuntime.runPromise(luluService.ping());
+} else if (input.provider === 'manual') {
+               const manualProvider = runtime.getProvider('manual');
+               if (!manualProvider) {
+                 throw new ORPCError('BAD_REQUEST', { message: 'Manual provider not configured' });
+               }
+               result = await manualProvider.client.ping();
+            } else {
+              throw new ORPCError('BAD_REQUEST', { message: `Unknown provider: ${input.provider}` });
             }
 
             return {
@@ -1924,14 +1905,16 @@ export default createPlugin({
         .handler(async ({ input }) => {
           const { PRINTFUL_PROVIDER_FIELDS } = await import('./services/fulfillment/printful');
           const { LULU_PROVIDER_FIELDS } = await import('./services/fulfillment/lulu');
+          const { MANUAL_PROVIDER_FIELDS } = await import('./services/fulfillment/manual');
 
           const allConfigs = {
             printful: PRINTFUL_PROVIDER_FIELDS,
             lulu: LULU_PROVIDER_FIELDS,
+            manual: MANUAL_PROVIDER_FIELDS,
           };
 
           if (input.provider) {
-            return { [input.provider]: allConfigs[input.provider] };
+            return { [input.provider]: allConfigs[input.provider as keyof typeof allConfigs] };
           }
 
           return allConfigs;

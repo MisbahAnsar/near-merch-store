@@ -18,6 +18,7 @@ import type { PaymentLineItem } from "./payment/schema";
 import { CheckoutError } from "./checkout/errors";
 import { getProvidersAddressRequirementError } from "./checkout/provider-address-requirements";
 
+
 interface ProviderItemGroup {
   item: CheckoutItemInput;
   productId: string;
@@ -31,6 +32,30 @@ interface ProviderItemGroup {
   fulfillmentProvider?: string;
   metadata?: ProductMetadata;
   referralAccountId?: string;
+}
+
+function getManualNotificationConfig(metadata?: ProductMetadata) {
+  const manualDetails = metadata?.providerDetails?.manual;
+
+  if (!manualDetails) {
+    return undefined;
+  }
+
+  const notificationEmails = Array.isArray(manualDetails.notificationEmails)
+    ? manualDetails.notificationEmails
+    : [];
+  const ownerAccountIds = Array.isArray(manualDetails.ownerAccountIds)
+    ? manualDetails.ownerAccountIds
+    : [];
+
+  return {
+    ...(notificationEmails.length > 0
+      ? { notificationEmails }
+      : {}),
+    ...(ownerAccountIds.length > 0
+      ? { ownerAccountIds }
+      : {}),
+  };
 }
 
 export interface CreateCheckoutParams {
@@ -181,6 +206,7 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
       Effect.gen(function* () {
         const productStore = yield* ProductStore;
         const orderStore = yield* OrderStore;
+        
 
         const logDuration = (label: string, startedAt: number) => {
           console.log(`[checkout] ${label} took ${Date.now() - startedAt}ms`);
@@ -743,16 +769,35 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
               totalAmount,
             });
 
-            const orderItems = allItems
-              .map((pi) => ({
+            const orderItems = allItems.map((pi) => {
+              const manualNotification = pi.fulfillmentProvider === "manual"
+                ? getManualNotificationConfig(pi.metadata)
+                : undefined;
+
+              const fulfillmentConfig = manualNotification
+                ? {
+                    providerName:
+                      pi.fulfillmentConfig?.providerName ||
+                      pi.fulfillmentProvider ||
+                      "manual",
+                    providerConfig: {
+                      ...((pi.fulfillmentConfig?.providerConfig as Record<string, unknown> | undefined) || {}),
+                      manualNotification,
+                    },
+                    files: pi.fulfillmentConfig?.files || [],
+                  }
+                : pi.fulfillmentConfig;
+
+              return {
                 productId: pi.productId,
                 variantId: pi.variantId,
                 productName: pi.productTitle,
                 quantity: pi.item.quantity,
                 unitPrice: pi.price,
                 fulfillmentProvider: pi.fulfillmentProvider,
-                fulfillmentConfig: pi.fulfillmentConfig,
-              }));
+                fulfillmentConfig,
+              };
+            });
 
             const order = yield* orderStore.create({
               userId,
@@ -769,6 +814,7 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
               customerTaxId: address.taxId,
               totalAmount,
               currency,
+              shippingAddress: address,
             });
 
             const draftOrderIds: Record<string, string> = {};
@@ -777,6 +823,10 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
               providerName,
               providerItems,
             ] of itemsByProvider.entries()) {
+              if (providerName === "manual") {
+                continue;
+              }
+
               const selectedRateId = selectedRates[providerName];
               if (!selectedRateId) {
                 return yield* Effect.fail(
@@ -784,10 +834,6 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
                     `No shipping rate selected for provider: ${providerName}`,
                   ),
                 );
-              }
-
-              if (providerName === "manual") {
-                continue;
               }
 
               const provider = runtime.getProvider(providerName);

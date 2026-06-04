@@ -7,13 +7,19 @@ import {
   LuluProviderDetailsSchema,
   type LuluProviderDetails,
 } from './services/fulfillment/lulu/types';
+import {
+  ManualProviderSettingsSchema,
+  type ManualProviderSettings,
+} from './services/fulfillment/manual/types';
 import { FulfillmentFileSchema as FulfillmentFileSchemaBase } from './services/fulfillment/schema';
 
 export {
   PrintfulProviderDetailsSchema,
   LuluProviderDetailsSchema,
+  ManualProviderSettingsSchema,
   type PrintfulProviderDetails,
   type LuluProviderDetails,
+  type ManualProviderSettings,
 };
 
 export const FulfillmentFileSchema = FulfillmentFileSchemaBase;
@@ -131,6 +137,7 @@ export type ProductDownload = z.infer<typeof ProductDownloadSchema>;
 export const ProviderDetailsSchema = z.object({
   printful: PrintfulProviderDetailsSchema.optional(),
   lulu: LuluProviderDetailsSchema.optional(),
+  manual: ManualProviderSettingsSchema.optional(),
 });
 
 export type ProviderDetails = z.infer<typeof ProviderDetailsSchema>;
@@ -260,6 +267,7 @@ export const OrderStatusSchema = z.enum([
   "partially_cancelled",
   "failed",
   "refunded",
+  "rejected",
 ]);
 
 export const TrackingInfoSchema = z.object({
@@ -402,6 +410,7 @@ export const CreateOrderInputSchema = z.object({
   totalAmount: z.number(),
   currency: z.string(),
   shippingMethod: z.string().optional(),
+  shippingAddress: ShippingAddressSchema.optional(),
 });
 
 export const ProductVariantInputSchema = z.object({
@@ -593,10 +602,13 @@ export const PrintfulEventConfigSchema = z.object({
 
 export const LuluWebhookEventTypeSchema = z.enum(['PRINT_JOB_STATUS_CHANGED']);
 
-export const ProviderNameSchema = z.enum(['printful', 'lulu']);
+export const ManualWebhookEventTypeSchema = z.enum(['ORDER_STATUS_CHANGED']);
+
+export const ProviderNameSchema = z.enum(['printful', 'lulu', 'manual']);
 export const ProviderWebhookEventTypeSchema = z.union([
   PrintfulWebhookEventTypeSchema,
   LuluWebhookEventTypeSchema,
+  ManualWebhookEventTypeSchema,
 ]);
 
 export const ProviderConfigSchema = z.object({
@@ -607,6 +619,7 @@ export const ProviderConfigSchema = z.object({
   enabledEvents: z.array(ProviderWebhookEventTypeSchema),
   publicKey: z.string().nullable(),
   secretKey: z.string().nullable(),
+  settings: ManualProviderSettingsSchema.optional(),
   lastConfiguredAt: z.number().nullable(),
   expiresAt: z.number().nullable(),
   createdAt: z.string().datetime(),
@@ -616,8 +629,9 @@ export const ProviderConfigSchema = z.object({
 export const ConfigureWebhookInputSchema = z.object({
   provider: ProviderNameSchema,
   webhookUrlOverride: z.string().url().nullable().optional(),
-  events: z.array(ProviderWebhookEventTypeSchema).min(1),
+  events: z.array(ProviderWebhookEventTypeSchema).min(1).optional(),
   expiresAt: z.string().datetime().nullable().optional(),
+  settings: ManualProviderSettingsSchema.optional(),
 });
 
 export const ConfigureWebhookOutputSchema = z.object({
@@ -626,12 +640,14 @@ export const ConfigureWebhookOutputSchema = z.object({
   publicKey: z.string().nullable(),
   enabledEvents: z.array(ProviderWebhookEventTypeSchema),
   expiresAt: z.number().nullable(),
+  settings: ManualProviderSettingsSchema.optional(),
 });
 
 export type PrintfulWebhookEventType = z.infer<
   typeof PrintfulWebhookEventTypeSchema
 >;
 export type LuluWebhookEventType = z.infer<typeof LuluWebhookEventTypeSchema>;
+export type ManualWebhookEventType = z.infer<typeof ManualWebhookEventTypeSchema>;
 export type PrintfulEventConfig = z.infer<typeof PrintfulEventConfigSchema>;
 export type ProviderName = z.infer<typeof ProviderNameSchema>;
 export type ProviderWebhookEventType = z.infer<typeof ProviderWebhookEventTypeSchema>;
@@ -701,3 +717,5 @@ export const DeleteOrdersOutputSchema = z.object({
 export const GetOrderAuditLogOutputSchema = z.object({
   logs: z.array(OrderAuditLogSchema),
 });
+
+

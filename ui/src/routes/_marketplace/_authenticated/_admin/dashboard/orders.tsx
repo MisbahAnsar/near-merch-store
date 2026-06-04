@@ -273,6 +273,7 @@ function AdminOrdersPage() {
   const loaderData = Route.useLoaderData();
   const updateOrderStatus = useUpdateOrderStatus();
   const [search, setSearch] = useState("");
+  const [filterManual, setFilterManual] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedOrdersForDelete, setSelectedOrdersForDelete] = useState<Order[]>([]);
@@ -306,14 +307,20 @@ function AdminOrdersPage() {
   const { orders } = loaderData;
 
   const filteredOrders = useMemo(() => {
-    if (!search) return orders;
+    let result = orders;
+    if (filterManual) {
+      result = result.filter((order) =>
+        (order.items ?? []).some((item) => item.fulfillmentProvider === "manual"),
+      );
+    }
+    if (!search) return result;
     const term = search.toLowerCase();
-    return orders.filter(
+    return result.filter(
       (order) =>
         order.id.toLowerCase().includes(term) ||
         order.userId.toLowerCase().includes(term)
     );
-  }, [orders, search]);
+  }, [orders, search, filterManual]);
 
   const selectedOrders = useMemo(() => {
     const selectedIndices = Object.keys(rowSelection).filter(key => rowSelection[key]);
@@ -579,17 +586,30 @@ function AdminOrdersPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-background border border-border/60 px-6 py-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/50 dark:text-muted-foreground" />
-          <Input
-            placeholder="Search by order ID or customer..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 bg-background/60 border border-border/60 rounded-lg focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-[#00EC97] hover:border-border/60 text-sm"
-          />
+<div className="rounded-2xl bg-background border border-border/60 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/50 dark:text-muted-foreground" />
+              <Input
+                placeholder="Search by order ID or customer..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10 bg-background/60 border border-border/60 rounded-lg focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-[#00EC97] hover:border-border/60 text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setFilterManual(!filterManual)}
+              className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                filterManual
+                  ? "bg-[#10b981] border-[#10b981] text-white"
+                  : "bg-background/60 border-border/60 text-foreground hover:border-[#10b981] hover:text-[#10b981]"
+              }`}
+            >
+              Manual only
+            </button>
+          </div>
         </div>
-      </div>
 
       {filteredOrders.length === 0 ? (
         <div className="rounded-2xl bg-background border border-border/60 p-12 text-center">

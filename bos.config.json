@@ -102,7 +102,8 @@
         "LULU_CLIENT_KEY",
         "LULU_CLIENT_SECRET",
         "ACCESS_KEY_ID",
-        "SECRET_ACCESS_KEY"
+        "SECRET_ACCESS_KEY",
+        "MANUAL_FULFILLMENT_FROM_EMAIL"
       ],
       "template": "nearbuilders/near-merch-store/api",
       "files": [

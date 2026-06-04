@@ -1,5 +1,4 @@
 import { z } from 'every-plugin/zod';
-import { ProductDownloadSchema } from '../../schema';
 
 // ─── Fulfillment Files (universal) ───
 
@@ -10,7 +9,12 @@ export const FulfillmentFileSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const ProviderDownloadSchema = ProductDownloadSchema;
+export const ProviderDownloadSchema = z.object({
+  url: z.string().url(),
+  label: z.string().optional(),
+  kind: z.enum(['free', 'paid']).default('free'),
+  fileName: z.string().optional(),
+});
 
 export const ProviderMetadataSchema = z.object({
   downloads: z.array(ProviderDownloadSchema).optional(),
