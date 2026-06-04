@@ -1,6 +1,6 @@
 {
   "account": "near-merch-store.near",
-  "template": "nearbuilders/near-merch-store",
+  "domain": "nearmerch.com",
   "shared": {
     "ui": {
       "react": {
