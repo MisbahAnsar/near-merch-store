@@ -87,6 +87,9 @@
       "variables": {
         "network": "mainnet",
         "contractId": "social.near",
+        "storageProvider": "r2",
+        "storageBucket": "near-merch-store",
+        "storagePublicUrl": "https://assets.nearmerch.com",
         "storageRegion": "us-east-1"
       },
       "secrets": [
@@ -103,7 +106,9 @@
         "LULU_CLIENT_SECRET",
         "ACCESS_KEY_ID",
         "SECRET_ACCESS_KEY",
-        "MANUAL_FULFILLMENT_FROM_EMAIL"
+<<<<<<< HEAD
+        "MANUAL_FULFILLMENT_FROM_EMAIL",
+        "RESEND_API_KEY"
       ],
       "template": "nearbuilders/near-merch-store/api",
       "files": [
