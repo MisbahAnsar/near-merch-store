@@ -27,8 +27,8 @@ const wrapHandler = <T>(effect: Effect.Effect<T, StorageError>) =>
 export default createPlugin({
   variables: z.object({
     bucket: z.string(),
+    endpoint: z.string(),
     publicUrl: z.string().optional(),
-    endpoint: z.string().optional(),
   }),
 
   secrets: z.object({
@@ -40,7 +40,7 @@ export default createPlugin({
 
   initialize: (config) =>
     Effect.gen(function* () {
-      const endpoint = config.variables.endpoint || `https://${config.variables.bucket}.r2.cloudflarestorage.com`;
+      const endpoint = config.variables.endpoint;
 
       const service = new R2StorageService({
         accessKeyId: config.secrets.ACCESS_KEY_ID,
