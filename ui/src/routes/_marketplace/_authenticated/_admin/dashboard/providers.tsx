@@ -132,22 +132,14 @@ function ProvidersPage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [manualNotificationEmails, setManualNotificationEmails] = useState("");
   const [manualOwnerAccountIds, setManualOwnerAccountIds] = useState("");
-  const [manualAutoAccept, setManualAutoAccept] = useState(false);
-  const [manualLeadTimeMin, setManualLeadTimeMin] = useState("5");
-  const [manualLeadTimeMax, setManualLeadTimeMax] = useState("10");
   const [manualReplyTo, setManualReplyTo] = useState("");
-  const [manualNotes, setManualNotes] = useState("");
 
   useEffect(() => {
     if (manualConfig?.settings) {
       const s = manualConfig.settings as Record<string, unknown>;
       setManualNotificationEmails(Array.isArray(s.notificationEmails) ? (s.notificationEmails as string[]).join(", ") : "");
       setManualOwnerAccountIds(Array.isArray(s.ownerAccountIds) ? (s.ownerAccountIds as string[]).join(", ") : "");
-      setManualAutoAccept(s.autoAcceptPaidOrders === true);
-      setManualLeadTimeMin(String(s.defaultLeadTimeMinDays ?? 5));
-      setManualLeadTimeMax(String(s.defaultLeadTimeMaxDays ?? 10));
       setManualReplyTo((s.replyToEmail as string) ?? "");
-      setManualNotes((s.notes as string) ?? "");
     }
   }, [manualConfig]);
 
@@ -288,11 +280,7 @@ function ProvidersPage() {
             .split(",")
             .map((id: string) => id.trim())
             .filter(Boolean),
-          autoAcceptPaidOrders: manualAutoAccept,
-          defaultLeadTimeMinDays: parseInt(manualLeadTimeMin, 10) || 5,
-          defaultLeadTimeMaxDays: parseInt(manualLeadTimeMax, 10) || 10,
           replyToEmail: manualReplyTo || undefined,
-          notes: manualNotes || undefined,
         },
       });
       toast.success("Manual provider settings saved");
@@ -803,60 +791,15 @@ function ProvidersPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="manual-reply-to">Reply-To Email</Label>
-              <Input
-                id="manual-reply-to"
-                placeholder="noreply@near.foundation"
-                value={manualReplyTo}
-                onChange={(e) => setManualReplyTo(e.target.value)}
-                className="bg-background/60 border border-border/60"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="manual-notes">Notes</Label>
-              <Input
-                id="manual-notes"
-                placeholder="Internal notes about this provider..."
-                value={manualNotes}
-                onChange={(e) => setManualNotes(e.target.value)}
-                className="bg-background/60 border border-border/60"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="manual-lead-min">Min Lead Time (days)</Label>
-              <Input
-                id="manual-lead-min"
-                type="number"
-                min="0"
-                value={manualLeadTimeMin}
-                onChange={(e) => setManualLeadTimeMin(e.target.value)}
-                className="bg-background/60 border border-border/60"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="manual-lead-max">Max Lead Time (days)</Label>
-              <Input
-                id="manual-lead-max"
-                type="number"
-                min="0"
-                value={manualLeadTimeMax}
-                onChange={(e) => setManualLeadTimeMax(e.target.value)}
-                className="bg-background/60 border border-border/60"
-              />
-            </div>
-            <div className="flex items-end gap-2 pb-1">
-              <Checkbox
-                id="manual-auto-accept"
-                checked={manualAutoAccept}
-                onCheckedChange={(checked) => setManualAutoAccept(checked === true)}
-              />
-              <Label htmlFor="manual-auto-accept" className="text-sm">Auto-accept paid orders</Label>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="manual-reply-to">Reply-To Email</Label>
+            <Input
+              id="manual-reply-to"
+              placeholder="noreply@near.foundation"
+              value={manualReplyTo}
+              onChange={(e) => setManualReplyTo(e.target.value)}
+              className="bg-background/60 border border-border/60"
+            />
           </div>
 
           <button

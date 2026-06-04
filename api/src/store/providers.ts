@@ -105,6 +105,7 @@ if (existing.length > 0) {
                 enabledEvents: config.enabledEvents ?? null,
                 publicKey: config.publicKey ?? null,
                 secretKey: config.secretKey ?? null,
+                settings: config.settings ?? null,
                 lastConfiguredAt: config.lastConfiguredAt ? new Date(config.lastConfiguredAt) : null,
                 expiresAt: config.expiresAt ? new Date(config.expiresAt) : null,
                 createdAt: now,

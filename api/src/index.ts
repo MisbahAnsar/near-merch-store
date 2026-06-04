@@ -11,16 +11,18 @@ import { createMarketplaceRuntime } from './runtime';
 import { ReturnAddressSchema, type ConfigureWebhookOutput, type OrderStatus, type PrintfulWebhookEventType, type ProductMetadata, type ProviderWebhookEventType, type TrackingInfo } from './schema';
 import { CheckoutService, CheckoutServiceLive } from './services/checkout';
 import { CheckoutError } from './services/checkout/errors';
+import { EmailService, EmailServiceLive } from './services/email';
 import { ProductService, ProductServiceLive } from './services/products';
 import { ProductBuilderService, ProductBuilderServiceLive } from './services/product-builder';
 import { AssetService, AssetServiceLive } from './services/assets';
 import { StripeService } from './services/stripe';
 import { NewsletterService, NewsletterServiceLive } from './services/newsletter';
-import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ManualFulfillmentStore, ManualFulfillmentStoreLive } from './store';
+import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive } from './store';
 import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
 import { computePrintfulUpdate, parsePrintfulWebhook, verifyPrintfulWebhookSignature } from './services/fulfillment/printful/webhook';
 import { handlePingPayWebhookEffect } from './services/payment/pingpay/webhook';
+import { handleOrderPaidEffect } from './services/order-paid';
 export * from './schema';
 
 
@@ -52,6 +54,7 @@ export default createPlugin({
     ACCESS_KEY_ID: z.string().optional(),
     SECRET_ACCESS_KEY: z.string().optional(),
     MANUAL_FULFILLMENT_FROM_EMAIL: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
     API_DATABASE_URL: z.string().default("file:./marketplace.db"),
     API_DATABASE_AUTH_TOKEN: z.string().optional(),
   }),
@@ -108,9 +111,6 @@ export default createPlugin({
                 : undefined,
             manual: {
               notificationEmails: [],
-              defaultLeadTimeMinDays: 5,
-              defaultLeadTimeMaxDays: 10,
-              autoAcceptPaidOrders: false,
               fromEmail: config.secrets.MANUAL_FULFILLMENT_FROM_EMAIL,
             },
           },
@@ -147,6 +147,11 @@ export default createPlugin({
 
       const dbLayer = DatabaseLive(config.secrets.API_DATABASE_URL);
 
+      const emailServiceLayer = EmailServiceLive({
+        fromEmail: config.secrets.MANUAL_FULFILLMENT_FROM_EMAIL || 'orders@nearmerch.com',
+        resendApiKey: config.secrets.RESEND_API_KEY,
+      });
+
       const storesLayer = Layer.provideMerge(
         Layer.mergeAll(
           ProductStoreLive,
@@ -156,7 +161,6 @@ export default createPlugin({
           ProductTypeStoreLive,
           NewsletterStoreLive,
           AssetStoreLive,
-          ManualFulfillmentStoreLive,
         ),
         dbLayer,
       );
@@ -168,6 +172,7 @@ export default createPlugin({
           NewsletterServiceLive,
           AssetServiceLive,
           ProductBuilderServiceLive(runtime),
+          emailServiceLayer,
         ),
         storesLayer,
       );
@@ -702,7 +707,7 @@ export default createPlugin({
 
               throw new ORPCError("INTERNAL_SERVER_ERROR", {
                 message:
-                  "Order Failed, please contact support (merch@near.foundation)",
+                  "Order Failed, please contact support (orders@nearmerch.com)",
               });
             }
 
@@ -1135,7 +1140,6 @@ export default createPlugin({
         if (event.type === "checkout.session.completed") {
           const session = event.data.object;
           const orderId = session.metadata?.orderId;
-          const draftOrderIdsJson = session.metadata?.draftOrderIds;
 
           if (!orderId) {
             return { received: true };
@@ -1169,68 +1173,12 @@ export default createPlugin({
             }),
           );
 
-          if (!draftOrderIdsJson) {
-            return { received: true };
-          }
-
           try {
-            const draftOrderIds = JSON.parse(draftOrderIdsJson) as Record<
-              string,
-              string
-            >;
-            const confirmationResults: Record<
-              string,
-              { success: boolean; error?: string }
-            > = {};
-
-            for (const [providerName, draftId] of Object.entries(
-              draftOrderIds,
-            )) {
-              if (providerName === "manual") {
-                continue;
-              }
-
-              const provider = runtime.getProvider(providerName);
-              if (!provider) {
-                confirmationResults[providerName] = {
-                  success: false,
-                  error: "Provider not configured",
-                };
-                continue;
-              }
-
-              const confirmEffect = Effect.tryPromise({
-                try: () => provider.client.confirmOrder({ id: draftId }),
-                catch: (error) =>
-                  new Error(
-                    `Failed to confirm order at ${providerName}: ${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
-                  ),
-              }).pipe(
-                Effect.retry({
-                  times: 3,
-                  schedule: Schedule.exponential("100 millis"),
-                }),
-              );
-
-              try {
-                const result = await managedRuntime.runPromise(confirmEffect);
-                confirmationResults[providerName] = { success: true };
-              } catch (error) {
-                const errorMessage =
-                  error instanceof Error ? error.message : String(error);
-                confirmationResults[providerName] = {
-                  success: false,
-                  error: errorMessage,
-                };
-              }
-            }
-
-            const allSuccess = Object.values(confirmationResults).every(
-              (r) => r.success,
+            const paidResult = await managedRuntime.runPromise(
+              handleOrderPaidEffect({ runtime, order }),
             );
-            const finalStatus = allSuccess
+
+            const finalStatus: OrderStatus = paidResult.allProviderConfirmationsSucceeded
               ? "processing"
               : "paid_pending_fulfillment";
 
@@ -1241,8 +1189,8 @@ export default createPlugin({
                   orderId,
                   finalStatus,
                   "service:stripe",
-                  `fulfillment:${allSuccess ? "confirmed" : "partial"}`,
-                  { confirmationResults, allSuccess },
+                  `fulfillment:${paidResult.allProviderConfirmationsSucceeded ? "confirmed" : "partial"}`,
+                  { confirmationResults: paidResult.confirmationResults, allSuccess: paidResult.allProviderConfirmationsSucceeded },
                 );
               }),
             );
@@ -2430,205 +2378,6 @@ export default createPlugin({
           } catch {
             return { placements: [] };
           }
-        }),
-
-      // ─── Admin: Manual Fulfillment ───
-
-      getManualFulfillmentQueue: builder.getManualFulfillmentQueue
-        .use(requireAdmin)
-        .handler(async ({ input }) => {
-          const exit = await managedRuntime.runPromiseExit(
-            Effect.gen(function* () {
-              const store = yield* ManualFulfillmentStore;
-              const { fulfillments, total } = yield* store.getQueue(input);
-
-              const orderStore = yield* OrderStore;
-              const enrichedList = [];
-
-              for (const f of fulfillments) {
-                const order = yield* orderStore.find(f.orderId);
-                enrichedList.push({
-                  ...f,
-                  order: order
-                    ? {
-                        id: order.id,
-                        userId: order.userId,
-                        status: order.status,
-                        totalAmount: order.totalAmount,
-                        currency: order.currency,
-                        createdAt: order.createdAt,
-                        items: (order.items ?? []).map((item: any) => ({
-                          id: item.id,
-                          productId: item.productId,
-                          productName: item.productName,
-                          variantName: item.variantName ?? null,
-                          quantity: item.quantity,
-                          unitPrice: item.unitPrice,
-                          fulfillmentProvider: item.fulfillmentProvider ?? null,
-                        })),
-                        shippingAddress: order.shippingAddress
-                          ? {
-                              firstName: order.shippingAddress.firstName,
-                              lastName: order.shippingAddress.lastName,
-                              addressLine1: order.shippingAddress.addressLine1,
-                              city: order.shippingAddress.city,
-                              country: order.shippingAddress.country,
-                              postCode: order.shippingAddress.postCode,
-                              email: order.shippingAddress.email,
-                            }
-                          : null,
-                      }
-                    : null,
-                });
-              }
-
-              return { fulfillments: enrichedList, total };
-            }),
-          );
-
-          if (Exit.isFailure(exit)) {
-            const error = Cause.squash(exit.cause);
-            throw new ORPCError('INTERNAL_SERVER_ERROR', {
-              message: error instanceof Error ? error.message : String(error),
-            });
-          }
-
-          return exit.value;
-        }),
-
-      acceptManualFulfillment: builder.acceptManualFulfillment
-        .use(requireAdmin)
-        .handler(async ({ input, errors }) => {
-          const exit = await managedRuntime.runPromiseExit(
-            Effect.gen(function* () {
-              const store = yield* ManualFulfillmentStore;
-              const existing = yield* store.getById(input.fulfillmentId);
-              if (!existing) {
-                return yield* Effect.fail(new Error('Manual fulfillment not found'));
-              }
-              if (existing.status !== 'pending') {
-                return yield* Effect.fail(new Error('Only pending fulfillments can be accepted'));
-              }
-
-              const updated = yield* store.updateStatus(input.fulfillmentId, 'accepted');
-
-              const orderStore = yield* OrderStore;
-              yield* orderStore.updateStatus(existing.orderId, 'processing' as OrderStatus, 'admin');
-
-              return { success: true };
-            }),
-          );
-
-          if (Exit.isFailure(exit)) {
-            const error = Cause.squash(exit.cause);
-            if (error instanceof Error && error.message.includes('not found')) {
-              throw errors.NOT_FOUND({
-                message: error.message,
-                data: { resource: 'manual_fulfillment', resourceId: input.fulfillmentId },
-              });
-            }
-            throw new ORPCError('INTERNAL_SERVER_ERROR', {
-              message: error instanceof Error ? error.message : String(error),
-            });
-          }
-
-          return exit.value;
-        }),
-
-      rejectManualFulfillment: builder.rejectManualFulfillment
-        .use(requireAdmin)
-        .handler(async ({ input, errors }) => {
-          const exit = await managedRuntime.runPromiseExit(
-            Effect.gen(function* () {
-              const store = yield* ManualFulfillmentStore;
-              const existing = yield* store.getById(input.fulfillmentId);
-              if (!existing) {
-                return yield* Effect.fail(new Error('Manual fulfillment not found'));
-              }
-              if (existing.status !== 'pending') {
-                return yield* Effect.fail(new Error('Only pending fulfillments can be rejected'));
-              }
-
-              yield* store.updateStatus(input.fulfillmentId, 'rejected', {
-                rejectionReason: input.reason,
-              });
-
-              const orderStore = yield* OrderStore;
-              yield* orderStore.updateStatus(existing.orderId, 'rejected' as OrderStatus, 'admin', input.reason);
-
-              return { success: true };
-            }),
-          );
-
-          if (Exit.isFailure(exit)) {
-            const error = Cause.squash(exit.cause);
-            if (error instanceof Error && error.message.includes('not found')) {
-              throw errors.NOT_FOUND({
-                message: error.message,
-                data: { resource: 'manual_fulfillment', resourceId: input.fulfillmentId },
-              });
-            }
-            throw new ORPCError('INTERNAL_SERVER_ERROR', {
-              message: error instanceof Error ? error.message : String(error),
-            });
-          }
-
-          return exit.value;
-        }),
-
-      updateManualFulfillment: builder.updateManualFulfillment
-        .use(requireAdmin)
-        .handler(async ({ input, errors }) => {
-          const exit = await managedRuntime.runPromiseExit(
-            Effect.gen(function* () {
-              const store = yield* ManualFulfillmentStore;
-              const existing = yield* store.getById(input.fulfillmentId);
-              if (!existing) {
-                return yield* Effect.fail(new Error('Manual fulfillment not found'));
-              }
-
-              const status = input.status ?? existing.status;
-              const extras: Record<string, string> = {};
-              if (input.internalNotes) extras.internalNotes = input.internalNotes;
-              if (input.trackingCode) extras.trackingCode = input.trackingCode;
-              if (input.trackingUrl) extras.trackingUrl = input.trackingUrl;
-              if (input.carrier) extras.carrier = input.carrier;
-
-              const updated = yield* store.updateStatus(input.fulfillmentId, status, extras);
-
-              const orderStore = yield* OrderStore;
-              if (status === 'shipped') {
-                const trackingInfo = input.trackingCode ? [{
-                  trackingCode: input.trackingCode,
-                  trackingUrl: input.trackingUrl ?? existing.trackingUrl ?? '',
-                  shipmentMethodName: input.carrier ?? existing.carrier ?? 'Manual Fulfillment',
-                }] : undefined;
-                if (trackingInfo) {
-                  yield* orderStore.updateTracking(existing.orderId, trackingInfo, 'admin');
-                }
-                yield* orderStore.updateStatus(existing.orderId, 'shipped' as OrderStatus, 'admin');
-              } else if (status === 'delivered') {
-                yield* orderStore.updateStatus(existing.orderId, 'delivered' as OrderStatus, 'admin');
-              }
-
-              return { success: true };
-            }),
-          );
-
-          if (Exit.isFailure(exit)) {
-            const error = Cause.squash(exit.cause);
-            if (error instanceof Error && error.message.includes('not found')) {
-              throw errors.NOT_FOUND({
-                message: error.message,
-                data: { resource: 'manual_fulfillment', resourceId: input.fulfillmentId },
-              });
-            }
-            throw new ORPCError('INTERNAL_SERVER_ERROR', {
-              message: error instanceof Error ? error.message : String(error),
-            });
-          }
-
-          return exit.value;
         }),
 
       // ─── Admin: Assets ───

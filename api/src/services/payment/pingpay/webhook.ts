@@ -2,6 +2,9 @@ import { Effect, Schedule } from 'every-plugin/effect';
 import type { MarketplaceRuntime, PaymentProvider } from '../../../runtime';
 import type { OrderStatus } from '../../../schema';
 import { OrderStore } from '../../../store/orders';
+import { ProviderConfigStore } from '../../../store/providers';
+import { EmailService } from '../../../services/email';
+import { handleOrderPaidEffect } from '../../../services/order-paid';
 
 export function handlePingPayWebhookEffect(options: {
   runtime: MarketplaceRuntime;
@@ -9,7 +12,7 @@ export function handlePingPayWebhookEffect(options: {
   signature: string;
   timestamp: string;
   body: string;
-}): Effect.Effect<{ received: true }, Error, OrderStore> {
+}): Effect.Effect<{ received: true }, Error, OrderStore | ProviderConfigStore | EmailService> {
   const { runtime, pingProvider, signature, timestamp, body } = options;
 
   return Effect.gen(function* () {
@@ -57,9 +60,6 @@ export function handlePingPayWebhookEffect(options: {
       eventType,
     });
 
-    const resolvedOrderId = order.id;
-    const draftOrderIds = order.draftOrderIds || {};
-
     switch (eventType) {
       case 'payment.success':
       case 'checkout.session.completed': {
@@ -76,104 +76,41 @@ export function handlePingPayWebhookEffect(options: {
         }
 
         yield* store.updateStatus(
-          resolvedOrderId, 
-          'paid', 
+          resolvedOrderId(order.id),
+          'paid',
           'service:pingpay',
           eventType,
-          { sessionId }
+          { sessionId },
         );
-        console.log('[PingPay Webhook] Updated order status to paid', { orderId: resolvedOrderId });
+        console.log('[PingPay Webhook] Updated order status to paid', { orderId: order.id });
 
-        if (Object.keys(draftOrderIds).length === 0) {
-          console.log('[PingPay Webhook] No draft orders to confirm', { orderId: resolvedOrderId });
-          return { received: true } as const;
-        }
+        const paidResult = yield* handleOrderPaidEffect({ runtime, order });
 
-        console.log('[PingPay Webhook] Confirming draft orders', {
-          draftOrderIds,
-          orderId: resolvedOrderId,
-        });
+        const finalStatus: OrderStatus = paidResult.allProviderConfirmationsSucceeded
+          ? 'processing'
+          : 'paid_pending_fulfillment';
 
-        const confirmationResults: Record<string, { success: boolean; error?: string }> = {};
-
-        for (const [providerName, draftId] of Object.entries(draftOrderIds)) {
-          if (providerName === 'manual') {
-            console.log('[PingPay Webhook] Manual provider, skipping confirmation', { providerName });
-            confirmationResults[providerName] = { success: true };
-            continue;
-          }
-
-          console.log('[PingPay Webhook] Confirming order with provider', { providerName, draftId });
-
-          const provider = runtime.getProvider(providerName);
-          if (!provider) {
-            console.error('[PingPay Webhook] Provider not configured', { providerName });
-            confirmationResults[providerName] = { success: false, error: 'Provider not configured' };
-            continue;
-          }
-
-          const confirmEffect = Effect.tryPromise({
-            try: () => provider.client.confirmOrder({ id: draftId as string }),
-            catch: (error) => {
-              const errorMsg = `Failed to confirm order at ${providerName}: ${error instanceof Error ? error.message : String(error)}`;
-              console.error('[PingPay Webhook]', errorMsg, { error: String(error), providerName, draftId });
-              return new Error(errorMsg);
-            },
-          }).pipe(Effect.retry({ times: 3, schedule: Schedule.exponential('100 millis') }));
-
-          const result = yield* confirmEffect.pipe(
-            Effect.map((r) => {
-              console.log('[PingPay Webhook] Successfully confirmed order', { providerName, draftId, result: r });
-              return { success: true } as const;
-            }),
-            Effect.catchAll((error) => {
-              const errorMsg = error.message || String(error);
-              const isCostCalculationPending = /calculat|cost.*pending|not.*possible.*confirm/i.test(errorMsg);
-              if (isCostCalculationPending) {
-                console.warn('[PingPay Webhook] Order confirmation failed — Printful costs still calculating. Order will remain in paid_pending_fulfillment for retry job.', {
-                  providerName,
-                  draftId,
-                  error: errorMsg,
-                });
-              } else {
-                console.error('[PingPay Webhook] Order confirmation failed', {
-                  providerName,
-                  draftId,
-                  error: errorMsg,
-                });
-              }
-              return Effect.succeed({ success: false as const, error: errorMsg, isCostCalculationPending });
-            })
-          );
-
-          confirmationResults[providerName] = result;
-        }
-
-        console.log('[PingPay Webhook] Confirmation results', { confirmationResults });
-
-        const allSuccess = Object.values(confirmationResults).every((r) => r.success);
-        const finalStatus: OrderStatus = allSuccess ? 'processing' : 'paid_pending_fulfillment';
         yield* store.updateStatus(
-          resolvedOrderId, 
-          finalStatus, 
+          resolvedOrderId(order.id),
+          finalStatus,
           'service:pingpay',
-          `fulfillment:${allSuccess ? 'confirmed' : 'partial'}`,
-          { confirmationResults, allSuccess }
+          `fulfillment:${paidResult.allProviderConfirmationsSucceeded ? 'confirmed' : 'partial'}`,
+          { confirmationResults: paidResult.confirmationResults, allSuccess: paidResult.allProviderConfirmationsSucceeded },
         );
-        console.log('[PingPay Webhook] Updated final status', { orderId: resolvedOrderId, finalStatus, allSuccess });
+        console.log('[PingPay Webhook] Updated final status', { orderId: order.id, finalStatus, allSuccess: paidResult.allProviderConfirmationsSucceeded });
         break;
       }
 
       case 'payment.failed':
-        console.log('[PingPay Webhook] Processing payment failed event', { orderId: resolvedOrderId });
+        console.log('[PingPay Webhook] Processing payment failed event', { orderId: resolvedOrderId(order.id) });
         yield* store.updateStatus(
-          resolvedOrderId, 
-          'payment_failed', 
+          resolvedOrderId(order.id),
+          'payment_failed',
           'service:pingpay',
           eventType,
-          { sessionId }
+          { sessionId },
         );
-        console.log('[PingPay Webhook] Updated order status to payment_failed', { orderId: resolvedOrderId });
+        console.log('[PingPay Webhook] Updated order status to payment_failed', { orderId: resolvedOrderId(order.id) });
         break;
 
       default:
@@ -181,7 +118,11 @@ export function handlePingPayWebhookEffect(options: {
         break;
     }
 
-    console.log('[PingPay Webhook] Processing completed successfully', { orderId: resolvedOrderId });
+    console.log('[PingPay Webhook] Processing completed successfully', { orderId: resolvedOrderId(order.id) });
     return { received: true } as const;
   });
+}
+
+function resolvedOrderId(orderId: string): string {
+  return orderId;
 }

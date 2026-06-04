@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from 'every-plugin/effect';
+import { Resend } from 'resend';
 
 interface EmailNotification {
   to: string[];
@@ -14,25 +15,42 @@ export class EmailService extends Context.Tag('EmailService')<
   }
 >() {}
 
-export const EmailServiceLive = (config: { fromEmail: string }) =>
+export const EmailServiceLive = (config: { fromEmail: string; resendApiKey?: string }) =>
   Layer.effect(
     EmailService,
     Effect.gen(function* () {
+      const resend = config.resendApiKey
+        ? new Resend(config.resendApiKey)
+        : null;
+
       return {
         sendNotification: (notification) =>
           Effect.tryPromise({
             try: async () => {
-              console.log(
-                `[EmailService] Sending notification to: ${notification.to.join(', ')}\n` +
-                `Subject: ${notification.subject}\n` +
-                `From: ${config.fromEmail}\n` +
-                (notification.replyTo ? `Reply-To: ${notification.replyTo}\n` : '') +
-                `\n${notification.body}`
-              );
+              if (resend) {
+                const { data, error } = await resend.emails.send({
+                  from: config.fromEmail,
+                  to: notification.to,
+                  subject: notification.subject,
+                  text: notification.body,
+                  ...(notification.replyTo ? { replyTo: notification.replyTo } : {}),
+                });
 
-              // TODO: Integrate with email provider (Resend, SendGrid, SES, etc.)
-              // For now, log the notification. When a provider is configured,
-              // replace this with the actual send call.
+                if (error) {
+                  throw new Error(`Resend API error: ${error.message}`);
+                }
+
+                console.log(`[EmailService] Sent notification to: ${notification.to.join(', ')} via Resend (id: ${data?.id})`);
+              } else {
+                console.log(
+                  `[EmailService] No Resend API key configured; logging notification:\n` +
+                  `To: ${notification.to.join(', ')}\n` +
+                  `From: ${config.fromEmail}\n` +
+                  `Subject: ${notification.subject}\n` +
+                  (notification.replyTo ? `Reply-To: ${notification.replyTo}\n` : '') +
+                  `\n${notification.body}`
+                );
+              }
             },
             catch: (error) => new Error(`Failed to send email notification: ${error}`),
           }),

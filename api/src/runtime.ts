@@ -31,9 +31,6 @@ export interface FulfillmentConfig {
 	};
 	manual?: {
 		notificationEmails?: string[];
-		defaultLeadTimeMinDays?: number;
-		defaultLeadTimeMaxDays?: number;
-		autoAcceptPaidOrders?: boolean;
 		fromEmail?: string;
 	};
 }
@@ -314,6 +311,7 @@ export async function createMarketplaceRuntime(
 		paymentProviders,
 		exclusiveCheckProviders,
 		storageProviders,
+		fulfillmentConfig,
 		getProvider: (name: string) => providers.find((p) => p.name === name) ?? null,
 		getPaymentProvider: (name: string) => paymentProviders.find((p) => p.name === name) ?? null,
 		getExclusiveCheckProvider: (name: string) => exclusiveCheckProviders.find((p) => p.name === name) ?? null,
@@ -327,6 +325,7 @@ export interface MarketplaceRuntime {
 	readonly paymentProviders: PaymentProvider[];
 	readonly exclusiveCheckProviders: ExclusiveCheckProvider[];
 	readonly storageProviders: StorageProvider[];
+	readonly fulfillmentConfig: FulfillmentConfig;
 	readonly getProvider: (name: string) => FulfillmentProvider | null;
 	readonly getPaymentProvider: (name: string) => PaymentProvider | null;
 	readonly getExclusiveCheckProvider: (name: string) => ExclusiveCheckProvider | null;

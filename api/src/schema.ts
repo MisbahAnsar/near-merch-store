@@ -410,6 +410,7 @@ export const CreateOrderInputSchema = z.object({
   totalAmount: z.number(),
   currency: z.string(),
   shippingMethod: z.string().optional(),
+  shippingAddress: ShippingAddressSchema.optional(),
 });
 
 export const ProductVariantInputSchema = z.object({
@@ -717,52 +718,4 @@ export const GetOrderAuditLogOutputSchema = z.object({
   logs: z.array(OrderAuditLogSchema),
 });
 
-export const ManualFulfillmentStatusSchema = z.enum([
-  "pending",
-  "accepted",
-  "processing",
-  "shipped",
-  "delivered",
-  "rejected",
-  "cancelled",
-]);
 
-export const ManualFulfillmentSchema = z.object({
-  id: z.string(),
-  orderId: z.string(),
-  status: ManualFulfillmentStatusSchema,
-  notificationEmails: z.array(z.string().email()),
-  assignedUserId: z.string().nullable(),
-  acceptedAt: z.string().datetime().nullable(),
-  rejectedAt: z.string().datetime().nullable(),
-  fulfilledAt: z.string().datetime().nullable(),
-  shippedAt: z.string().datetime().nullable(),
-  rejectionReason: z.string().nullable(),
-  internalNotes: z.string().nullable(),
-  trackingCode: z.string().nullable(),
-  trackingUrl: z.string().nullable(),
-  carrier: z.string().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const ManualFulfillmentQueueInputSchema = z.object({
-  status: ManualFulfillmentStatusSchema.optional(),
-  limit: z.number().int().positive().max(100).default(50),
-  offset: z.number().int().min(0).default(0),
-});
-
-export const UpdateManualFulfillmentInputSchema = z.object({
-  fulfillmentId: z.string(),
-  status: ManualFulfillmentStatusSchema.optional(),
-  rejectionReason: z.string().optional(),
-  internalNotes: z.string().optional(),
-  trackingCode: z.string().optional(),
-  trackingUrl: z.string().url().optional(),
-  carrier: z.string().optional(),
-});
-
-export type ManualFulfillmentStatus = z.infer<typeof ManualFulfillmentStatusSchema>;
-export type ManualFulfillment = z.infer<typeof ManualFulfillmentSchema>;
-export type ManualFulfillmentQueueInput = z.infer<typeof ManualFulfillmentQueueInputSchema>;
-export type UpdateManualFulfillmentInput = z.infer<typeof UpdateManualFulfillmentInputSchema>;

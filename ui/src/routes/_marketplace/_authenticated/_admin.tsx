@@ -11,7 +11,7 @@ import {
   ChevronRight,
   ChevronDown,
   ArrowLeft,
-  MailCheck,
+  
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -80,7 +80,7 @@ function AdminLayout() {
   const isOrdersActive = !!matchRoute({ to: "/dashboard/orders" });
   const isUsersActive = !!matchRoute({ to: "/dashboard/users" });
   const isProvidersActive = !!matchRoute({ to: "/dashboard/providers" });
-  const isManualFulfillmentActive = !!matchRoute({ to: "/dashboard/manual-fulfillment" });
+  
   const isCollectionsActive = !!matchRoute({ to: "/dashboard/collections" });
   const isNewProductActive = !!matchRoute({ to: "/dashboard/new-product" });
 
@@ -90,13 +90,13 @@ function AdminLayout() {
     if (isOrdersActive) return "Orders";
     if (isUsersActive) return "Users";
 if (isProvidersActive) return "Providers";
-  if (isManualFulfillmentActive) return "Fulfillment";
+  
   if (isCollectionsActive) return "Collections";
   if (isNewProductActive) return "Create Product";
   return "Overview";
   };
 
-  const hasActiveSection = isOverviewActive || isInventoryActive || isOrdersActive || isUsersActive || isProvidersActive || isManualFulfillmentActive || isCollectionsActive || isNewProductActive;
+  const hasActiveSection = isOverviewActive || isInventoryActive || isOrdersActive || isUsersActive || isProvidersActive  || isCollectionsActive || isNewProductActive;
 
   return (
     <div className="bg-background min-h-screen pt-32 overflow-x-hidden">
@@ -220,18 +220,7 @@ if (isProvidersActive) return "Providers";
                          Providers
                        </Link>
                      </DropdownMenuItem>
-                     <DropdownMenuItem asChild className="focus:bg-transparent hover:bg-transparent focus:text-[#00EC97] p-0">
-                       <Link
-                         to="/dashboard/manual-fulfillment"
-                         preload="intent"
-                         preloadDelay={0}
-                         className={`block text-sm font-semibold transition-colors px-3 py-2 rounded-lg ${
-                           isManualFulfillmentActive ? 'text-[#00EC97]' : 'text-foreground hover:text-[#00EC97]'
-                         }`}
-                       >
-                         Fulfillment
-                       </Link>
-                     </DropdownMenuItem>
+
                     <DropdownMenuItem asChild className="focus:bg-transparent hover:bg-transparent focus:text-[#00EC97] p-0">
                       <Link
                         to="/dashboard/collections"
@@ -342,21 +331,7 @@ if (isProvidersActive) return "Providers";
                 <ChevronRight className="size-4" />
               </Link>
 
-              <Link
-                to="/dashboard/manual-fulfillment"
-                preload="intent"
-                preloadDelay={0}
-                className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors rounded-lg",
-                  isManualFulfillmentActive
-                    ? "bg-[#00EC97] border border-[#00EC97] text-black"
-                    : "bg-background border border-border/60 hover:bg-[#00EC97] hover:border-[#00EC97] hover:text-black"
-                )}
-              >
-                <MailCheck className="size-4" />
-                <span className="flex-1 text-sm font-semibold">Fulfillment</span>
-                <ChevronRight className="size-4" />
-              </Link>
+              
 
               <Link
                 to="/dashboard/collections"

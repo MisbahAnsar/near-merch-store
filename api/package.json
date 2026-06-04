@@ -24,6 +24,7 @@
     "near-social-js": "^2.0.3",
     "postgres": "^3.4.8",
     "printful-sdk-js-v2": "^2.0.3-beta",
+    "resend": "^6.12.4",
     "stripe": "^20.0.0",
     "uuidv7": "^1.1.0"
   },
