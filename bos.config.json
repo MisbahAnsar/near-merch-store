@@ -60,8 +60,8 @@
     "ui": {
       "name": "ui",
       "development": "http://localhost:3002",
-      "production": "https://elliot-braem-4326-ui-near-merch-store-nearbuilder-27db94db6-ze.zephyrcloud.app",
-      "ssr": "https://elliot-braem-4327-ui-near-merch-store-nearbuilder-8f3961222-ze.zephyrcloud.app"
+      "production": "https://elliot-braem-4329-ui-near-merch-store-nearbuilder-028143ca8-ze.zephyrcloud.app",
+      "ssr": "https://elliot-braem-4330-ui-near-merch-store-nearbuilder-f391a745f-ze.zephyrcloud.app"
     },
     "api": {
       "name": "api",
