@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.14.1
+
+### Patch Changes
+
+- 0a26fed: Add per-variant price editing in the admin inventory sheet and align storefront pricing to use the lowest variant price.
+
 ## 1.14.0
 
 ### Minor Changes
