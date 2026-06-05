@@ -670,6 +670,7 @@ export const OrderAuditLogActionSchema = z.enum([
   "tracking_update",
   "fulfillment_update",
   "admin_edit",
+  "notification",
   "delete",
 ]);
 
@@ -717,5 +718,4 @@ export const DeleteOrdersOutputSchema = z.object({
 export const GetOrderAuditLogOutputSchema = z.object({
   logs: z.array(OrderAuditLogSchema),
 });
-
 

@@ -23,6 +23,7 @@ export function handleOrderPaidEffect(options: {
 
     const confirmationResults: Record<string, { success: boolean; error?: string }> = {};
     const draftOrderIds = order.draftOrderIds || {};
+    let manualNotificationSucceeded = true;
 
     for (const [providerName, draftId] of Object.entries(draftOrderIds)) {
       if (providerName === 'manual') {
@@ -62,64 +63,134 @@ export function handleOrderPaidEffect(options: {
     );
 
     if (hasManualItems) {
+      let notificationOutcome: 'sent' | 'failed' | 'skipped_disabled' | 'skipped_no_recipients' = 'skipped_no_recipients';
+      let notificationMetadata: Record<string, unknown> = {};
+
       try {
         const manualConfig = yield* providerConfigStore.getConfig('manual');
 
         if (!manualConfig?.enabled) {
-          const allSuccess = Object.values(confirmationResults).every((r) => r.success);
-
-          return {
-            allProviderConfirmationsSucceeded: allSuccess,
-            confirmationResults,
-          };
-        }
-
-        const settings = manualConfig?.settings as Record<string, unknown> | undefined;
-        const globalEmails: string[] = Array.isArray(settings?.notificationEmails) ? (settings!.notificationEmails as string[]) : [];
-        const globalOwnerIds: string[] = Array.isArray(settings?.ownerAccountIds) ? (settings!.ownerAccountIds as string[]) : [];
-        const replyTo: string | undefined = typeof settings?.replyToEmail === 'string' ? settings.replyToEmail : undefined;
-        const fromEmail = runtime.fulfillmentConfig.manual?.fromEmail ?? 'orders@nearmerch.com';
-
-        const productEmailEntries = (order.items ?? [])
-          .filter((item) => item.fulfillmentProvider === 'manual')
-          .map((item) => {
-            const fulfillmentConfig = item.fulfillmentConfig as Record<string, unknown> | undefined;
-            const providerConfig = fulfillmentConfig?.providerConfig as Record<string, unknown> | undefined;
-            const manualDetails = providerConfig?.manualNotification as Record<string, unknown> | undefined;
-            return {
-              notificationEmails: Array.isArray(manualDetails?.notificationEmails) ? (manualDetails!.notificationEmails as string[]) : [],
-              ownerAccountIds: Array.isArray(manualDetails?.ownerAccountIds) ? (manualDetails!.ownerAccountIds as string[]) : [],
-            };
+          manualNotificationSucceeded = false;
+          notificationOutcome = 'skipped_disabled';
+          notificationMetadata = { reason: 'manual provider disabled' };
+          console.warn('[handleOrderPaid] Manual notifications skipped', {
+            orderId: order.id,
+            reason: 'manual provider disabled',
           });
+        } else {
+          const settings = manualConfig?.settings as Record<string, unknown> | undefined;
+          const globalEmails: string[] = Array.isArray(settings?.notificationEmails) ? (settings!.notificationEmails as string[]) : [];
+          const globalOwnerIds: string[] = Array.isArray(settings?.ownerAccountIds) ? (settings!.ownerAccountIds as string[]) : [];
+          const replyTo: string | undefined = typeof settings?.replyToEmail === 'string' ? settings.replyToEmail : undefined;
+          const fromEmail = runtime.fulfillmentConfig.manual?.fromEmail ?? 'orders@nearmerch.com';
 
-        const notificationEmails = resolveNotificationEmails(
-          globalEmails,
-          globalOwnerIds,
-          productEmailEntries,
-        );
+          const productEmailEntries = (order.items ?? [])
+            .filter((item) => item.fulfillmentProvider === 'manual')
+            .map((item) => {
+              const fulfillmentConfig = item.fulfillmentConfig as Record<string, unknown> | undefined;
+              const providerConfig = fulfillmentConfig?.providerConfig as Record<string, unknown> | undefined;
+              const manualDetails = providerConfig?.manualNotification as Record<string, unknown> | undefined;
+              return {
+                notificationEmails: Array.isArray(manualDetails?.notificationEmails) ? (manualDetails!.notificationEmails as string[]) : [],
+                ownerAccountIds: Array.isArray(manualDetails?.ownerAccountIds) ? (manualDetails!.ownerAccountIds as string[]) : [],
+              };
+            });
 
-        if (notificationEmails.length > 0) {
-          const itemSummary = (order.items ?? [])
-            .map((item) => `- ${item.productName}${item.variantName ? ` (${item.variantName})` : ''} x${item.quantity}`)
-            .join('\n');
+          const notificationEmails = resolveNotificationEmails(
+            globalEmails,
+            globalOwnerIds,
+            productEmailEntries,
+          );
 
-          const shippingInfo = order.shippingAddress
-            ? `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}\n${order.shippingAddress.addressLine1}\n${order.shippingAddress.city}, ${order.shippingAddress.state || ''} ${order.shippingAddress.postCode}\n${order.shippingAddress.country}\n${order.shippingAddress.email}`
-            : 'No shipping address';
+          if (notificationEmails.length > 0) {
+            const itemSummary = (order.items ?? [])
+              .map((item) => `- ${item.productName}${item.variantName ? ` (${item.variantName})` : ''} x${item.quantity}`)
+              .join('\n');
 
-          yield* emailService.sendNotification({
-            to: notificationEmails,
-            subject: `New order received: ${order.id}`,
-            body: `A new order has been placed and paid.\n\nOrder ID: ${order.id}\nTotal: ${order.currency.toUpperCase()} ${order.totalAmount.toFixed(2)}\n\nItems:\n${itemSummary}\n\nShipping:\n${shippingInfo}`,
-            replyTo,
-          });
+            const shippingInfo = order.shippingAddress
+              ? `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}\n${order.shippingAddress.addressLine1}\n${order.shippingAddress.city}, ${order.shippingAddress.state || ''} ${order.shippingAddress.postCode}\n${order.shippingAddress.country}\n${order.shippingAddress.email}`
+              : 'No shipping address';
+
+            yield* emailService.sendNotification({
+              to: notificationEmails,
+              subject: `New order received: ${order.id}`,
+              body: `A new order has been placed and paid.\n\nOrder ID: ${order.id}\nTotal: ${order.currency.toUpperCase()} ${order.totalAmount.toFixed(2)}\n\nItems:\n${itemSummary}\n\nShipping:\n${shippingInfo}`,
+              replyTo,
+            }).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  notificationOutcome = 'sent';
+                  notificationMetadata = {
+                    fromEmail,
+                    recipientCount: notificationEmails.length,
+                  };
+                  console.log('[handleOrderPaid] Sent manual notification email', {
+                    orderId: order.id,
+                    fromEmail,
+                    recipientCount: notificationEmails.length,
+                  });
+                }),
+              ),
+              Effect.catchAll((emailError: unknown) =>
+                Effect.sync(() => {
+                  manualNotificationSucceeded = false;
+                  notificationOutcome = 'failed';
+                  const errorMsg = emailError instanceof Error ? emailError.message : String(emailError);
+                  notificationMetadata = {
+                    fromEmail,
+                    recipientCount: notificationEmails.length,
+                    error: errorMsg,
+                  };
+                  console.error('[handleOrderPaid] Failed to send manual notification email', {
+                    orderId: order.id,
+                    fromEmail,
+                    error: errorMsg,
+                  });
+                }),
+              ),
+            );
+          } else {
+            manualNotificationSucceeded = false;
+            notificationOutcome = 'skipped_no_recipients';
+            notificationMetadata = { reason: 'no recipients configured' };
+            console.warn('[handleOrderPaid] Manual notifications skipped', {
+              orderId: order.id,
+              reason: 'no recipients configured',
+            });
+          }
         }
       } catch (emailError) {
-        console.error('[handleOrderPaid] Failed to send manual notification email:', emailError);
+        manualNotificationSucceeded = false;
+        notificationOutcome = 'failed';
+        notificationMetadata = {
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+        };
+        console.error('[handleOrderPaid] Failed to process manual notification configuration', {
+          orderId: order.id,
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+        });
       }
+
+      yield* orderStore.createAuditLog({
+        orderId: order.id,
+        actor: 'service:order-paid',
+        action: 'notification',
+        field: 'manualNotification',
+        newValue: notificationOutcome,
+        metadata: notificationMetadata,
+      }).pipe(
+        Effect.catchAll((error: unknown) =>
+          Effect.sync(() => {
+            console.warn('[handleOrderPaid] Failed to write manual notification audit log', {
+              orderId: order.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }),
+        ),
+      );
     }
 
-    const allSuccess = Object.values(confirmationResults).every((r) => r.success);
+    const allSuccess = Object.values(confirmationResults).every((r) => r.success) && manualNotificationSucceeded;
 
     return {
       allProviderConfirmationsSucceeded: allSuccess,

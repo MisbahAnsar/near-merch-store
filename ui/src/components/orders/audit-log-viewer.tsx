@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, History, Check, Trash2 } from 'lucide-react';
+import { ExternalLink, History, Check, Trash2, Mail } from 'lucide-react';
 import { apiClient } from '@/utils/orpc';
 import { getStatusLabel } from '@/lib/order-status';
 
@@ -27,6 +27,8 @@ function getActionIcon(action: string) {
       return <Check className="h-4 w-4 text-[#00EC97]" />;
     case 'tracking_update':
       return <ExternalLink className="h-4 w-4 text-blue-500" />;
+    case 'notification':
+      return <Mail className="h-4 w-4 text-emerald-500" />;
     case 'delete':
       return <Trash2 className="h-4 w-4 text-destructive" />;
     default:
@@ -44,6 +46,8 @@ function getActionLabel(action: string): string {
       return 'Fulfillment updated';
     case 'admin_edit':
       return 'Admin edit';
+    case 'notification':
+      return 'Notification';
     case 'delete':
       return 'Order deleted';
     default:

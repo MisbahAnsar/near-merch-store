@@ -96,6 +96,7 @@ function createRuntime(confirmOrder: ReturnType<typeof vi.fn>): MarketplaceRunti
 describe('handleOrderPaidEffect', () => {
   it('confirms non-manual drafts and sends manual notifications to global and product recipients', async () => {
     const confirmOrder = vi.fn().mockResolvedValue({ id: 'printful_draft_123' });
+    const auditLogs: Array<Record<string, unknown>> = [];
     const notifications: Array<{
       to: string[];
       subject: string;
@@ -104,7 +105,12 @@ describe('handleOrderPaidEffect', () => {
     }> = [];
 
     const layer = Layer.mergeAll(
-      Layer.succeed(OrderStore, {} as any),
+      Layer.succeed(OrderStore, {
+        createAuditLog: (input: Record<string, unknown>) =>
+          Effect.sync(() => {
+            auditLogs.push(input);
+          }),
+      } as any),
       Layer.succeed(ProviderConfigStore, {
         getConfig: () =>
           Effect.succeed({
@@ -164,10 +170,18 @@ describe('handleOrderPaidEffect', () => {
     expect(notifications[0]?.body).toContain('Manual Product x1');
     expect(notifications[0]?.body).toContain('123 Main St');
     expect(notifications[0]?.body).toContain('john@example.com');
+    expect(auditLogs).toHaveLength(1);
+    expect(auditLogs[0]).toMatchObject({
+      actor: 'service:order-paid',
+      action: 'notification',
+      field: 'manualNotification',
+      newValue: 'sent',
+    });
   });
 
   it('does not send manual notifications when the manual provider is disabled', async () => {
     const confirmOrder = vi.fn().mockResolvedValue({ id: 'printful_draft_123' });
+    const auditLogs: Array<Record<string, unknown>> = [];
     const notifications: Array<{
       to: string[];
       subject: string;
@@ -176,7 +190,12 @@ describe('handleOrderPaidEffect', () => {
     }> = [];
 
     const layer = Layer.mergeAll(
-      Layer.succeed(OrderStore, {} as any),
+      Layer.succeed(OrderStore, {
+        createAuditLog: (input: Record<string, unknown>) =>
+          Effect.sync(() => {
+            auditLogs.push(input);
+          }),
+      } as any),
       Layer.succeed(ProviderConfigStore, {
         getConfig: () =>
           Effect.succeed({
@@ -215,12 +234,80 @@ describe('handleOrderPaidEffect', () => {
 
     expect(confirmOrder).toHaveBeenCalledWith({ id: 'printful_draft_123' });
     expect(result).toEqual({
-      allProviderConfirmationsSucceeded: true,
+      allProviderConfirmationsSucceeded: false,
       confirmationResults: {
         manual: { success: true },
         printful: { success: true },
       },
     });
     expect(notifications).toHaveLength(0);
+    expect(auditLogs).toHaveLength(1);
+    expect(auditLogs[0]).toMatchObject({
+      actor: 'service:order-paid',
+      action: 'notification',
+      field: 'manualNotification',
+      newValue: 'skipped_disabled',
+    });
+  });
+
+  it('fails the paid-order result when manual notification sending fails', async () => {
+    const confirmOrder = vi.fn().mockResolvedValue({ id: 'printful_draft_123' });
+    const auditLogs: Array<Record<string, unknown>> = [];
+
+    const layer = Layer.mergeAll(
+      Layer.succeed(OrderStore, {
+        createAuditLog: (input: Record<string, unknown>) =>
+          Effect.sync(() => {
+            auditLogs.push(input);
+          }),
+      } as any),
+      Layer.succeed(ProviderConfigStore, {
+        getConfig: () =>
+          Effect.succeed({
+            provider: 'manual',
+            enabled: true,
+            webhookUrl: null,
+            webhookUrlOverride: null,
+            enabledEvents: [],
+            publicKey: null,
+            secretKey: null,
+            settings: {
+              notificationEmails: ['ops@nearmerch.com'],
+              ownerAccountIds: ['owner.near'],
+              replyToEmail: 'support@nearmerch.com',
+            },
+            lastConfiguredAt: null,
+            expiresAt: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }),
+      } as any),
+      Layer.succeed(EmailService, {
+        sendNotification: () => Effect.fail(new Error('resend unavailable')),
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      handleOrderPaidEffect({
+        runtime: createRuntime(confirmOrder),
+        order: createOrder(),
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(confirmOrder).toHaveBeenCalledWith({ id: 'printful_draft_123' });
+    expect(result).toEqual({
+      allProviderConfirmationsSucceeded: false,
+      confirmationResults: {
+        manual: { success: true },
+        printful: { success: true },
+      },
+    });
+    expect(auditLogs).toHaveLength(1);
+    expect(auditLogs[0]).toMatchObject({
+      actor: 'service:order-paid',
+      action: 'notification',
+      field: 'manualNotification',
+      newValue: 'failed',
+    });
   });
 });
