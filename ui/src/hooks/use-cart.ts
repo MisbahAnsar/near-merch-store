@@ -4,12 +4,14 @@ import {
   type CartItem,
   type Product,
 } from "@/integrations/api";
+import { getProductVariantPrice } from "@/lib/product-price";
 import { useCartStore } from "@/stores/cart-store";
 import { useEffect, useMemo } from "react";
 
 interface CartItemWithProduct extends CartItem {
   id: string;
   product: Product;
+  unitPrice: number;
 }
 
 /**
@@ -43,7 +45,12 @@ export function useCart() {
     Object.entries(items).forEach(([itemId, item]) => {
       const product = products.find((p) => p.slug === item.productId);
       if (product) {
-        result.push({ ...item, id: item.id ?? itemId, product });
+        result.push({
+          ...item,
+          id: item.id ?? itemId,
+          product,
+          unitPrice: getProductVariantPrice(product, item.variantId),
+        });
       }
     });
 
@@ -71,7 +78,7 @@ export function useCart() {
   const subtotal = useMemo(
     () =>
       cartItems.reduce(
-        (sum, item) => sum + item.product.price * item.quantity,
+        (sum, item) => sum + item.unitPrice * item.quantity,
         0
       ),
     [cartItems]

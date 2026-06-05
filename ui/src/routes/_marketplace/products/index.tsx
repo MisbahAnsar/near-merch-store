@@ -19,6 +19,7 @@ import {
 import { useCart } from "@/hooks/use-cart";
 import { cn } from "@/lib/utils";
 import { COLOR_MAP } from "@/lib/product-utils";
+import { getLowestVariantPrice } from "@/lib/product-price";
 
 import {
   productLoaders,
@@ -249,7 +250,7 @@ function ProductsIndexPage() {
     // Filter by price range
     if (priceRange !== 'all') {
       filteredProducts = filteredProducts.filter((product) => {
-        const price = product.price;
+        const price = getLowestVariantPrice(product);
         switch (priceRange) {
           case 'under-50':
             return price < 50;
@@ -282,9 +283,9 @@ function ProductsIndexPage() {
 
     const sortedProducts = [...filteredProducts].sort((a, b) => {
       if (sortBy === 'price-low-high') {
-        return a.price - b.price;
+        return getLowestVariantPrice(a) - getLowestVariantPrice(b);
       } else if (sortBy === 'price-high-low') {
-        return b.price - a.price;
+        return getLowestVariantPrice(b) - getLowestVariantPrice(a);
       } else {
         return 0;
       }

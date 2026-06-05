@@ -1042,7 +1042,7 @@ export const contract = oc.router({
       method: "PATCH",
       path: "/admin/products/{id}",
       summary: "Update a product",
-      description: "Updates product details including name, description, price, images, and thumbnail. Only provided fields are updated.",
+      description: "Updates product details including name, description, price, variants, images, and thumbnail. Only provided fields are updated.",
       tags: ["Admin", "Products"],
     })
     .input(z.object({
@@ -1051,6 +1051,10 @@ export const contract = oc.router({
       description: z.string().nullable().optional(),
       price: z.number().positive().optional(),
       priceLocked: z.boolean().optional(),
+      variants: z.array(z.object({
+        id: z.string(),
+        price: z.number().positive(),
+      })).optional(),
       images: z.array(ProductImageSchema).optional(),
       thumbnailImage: z.string().nullable().optional(),
     }))

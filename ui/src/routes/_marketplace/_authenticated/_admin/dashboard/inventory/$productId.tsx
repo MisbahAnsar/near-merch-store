@@ -48,6 +48,19 @@ interface ProductImageDraft {
   isNew?: boolean;
 }
 
+interface VariantPriceDraft {
+  id: string;
+  title: string;
+  sku?: string;
+  attributes: Array<{ name: string; value: string }>;
+  price: string;
+}
+
+function formatVariantAttributes(attributes: Array<{ name: string; value: string }>) {
+  if (attributes.length === 0) return "Default variant";
+  return attributes.map((attr) => `${attr.name}: ${attr.value}`).join(" · ");
+}
+
 function ImageCard({
   img,
   index,
@@ -138,11 +151,13 @@ function ProductEditSheet() {
 
   const { data: productData, isLoading, error } = useProduct(productId);
   const product = productData?.product;
+  const hasMultipleVariants = (product?.variants?.length ?? 0) > 1;
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [priceLocked, setPriceLocked] = useState(false);
+  const [variantPrices, setVariantPrices] = useState<VariantPriceDraft[]>([]);
   const [images, setImages] = useState<ProductImageDraft[]>([]);
   const [thumbnailImage, setThumbnailImage] = useState<string | null>(null);
   const [newImageUrl, setNewImageUrl] = useState("");
@@ -163,6 +178,15 @@ function ProductEditSheet() {
       setDescription(product.description ?? "");
       setPrice(String(product.price));
       setPriceLocked(product.priceLocked ?? false);
+      setVariantPrices(
+        (product.variants ?? []).map((variant) => ({
+          id: variant.id,
+          title: variant.title,
+          sku: variant.sku,
+          attributes: variant.attributes ?? [],
+          price: String(variant.price),
+        })),
+      );
       setImages(
         (product.images ?? []).map((img, i) => ({
           id: img.id,
@@ -182,6 +206,10 @@ function ProductEditSheet() {
           description: product.description ?? "",
           price: product.price,
           priceLocked: product.priceLocked ?? false,
+          variants: (product.variants ?? []).map((variant) => ({
+            id: variant.id,
+            price: variant.price,
+          })),
           images: product.images ?? [],
           thumbnailImage: product.thumbnailImage ?? null,
         }),
@@ -196,6 +224,10 @@ function ProductEditSheet() {
         description,
         price: Number(price) || 0,
         priceLocked,
+        variants: variantPrices.map((variant) => ({
+          id: variant.id,
+          price: Number(variant.price) || 0,
+        })),
         images,
         thumbnailImage,
       })
@@ -320,6 +352,17 @@ function ProductEditSheet() {
       return;
     }
 
+    const parsedVariants = variantPrices.map((variant) => ({
+      id: variant.id,
+      price: Number(variant.price),
+    }));
+
+    const invalidVariant = parsedVariants.find((variant) => isNaN(variant.price) || variant.price <= 0);
+    if (invalidVariant) {
+      toast.error("Variant prices must be positive numbers");
+      return;
+    }
+
     updateMutation.mutate(
       {
         id: productId,
@@ -327,6 +370,12 @@ function ProductEditSheet() {
         description: description !== (product.description ?? "") ? description : undefined,
         price: parsedPrice !== product.price ? parsedPrice : undefined,
         priceLocked: priceLocked !== (product.priceLocked ?? false) ? priceLocked : undefined,
+        variants:
+          hasMultipleVariants
+            ? parsedVariants.filter(
+                (variant, index) => variant.price !== (product.variants?.[index]?.price ?? variant.price),
+              )
+            : undefined,
         images: images.map((img, i) => ({
           id: img.id,
           url: img.url,
@@ -340,23 +389,55 @@ function ProductEditSheet() {
         thumbnailImage: thumbnailImage !== (product.thumbnailImage ?? null) ? thumbnailImage : undefined,
       },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
+          const savedProduct = result.product ?? product;
+
+          setName(savedProduct.title);
+          setDescription(savedProduct.description ?? "");
+          setPrice(String(savedProduct.price));
+          setPriceLocked(savedProduct.priceLocked ?? false);
+          setVariantPrices(
+            (savedProduct.variants ?? []).map((variant) => ({
+              id: variant.id,
+              title: variant.title,
+              sku: variant.sku,
+              attributes: variant.attributes ?? [],
+              price: String(variant.price),
+            })),
+          );
+          setImages(
+            (savedProduct.images ?? []).map((img, i) => ({
+              id: img.id,
+              url: img.url,
+              type: (img.type || "catalog") as ImageType,
+              altText: img.altText,
+              placement: img.placement,
+              style: img.style,
+              variantIds: img.variantIds,
+              order: img.order ?? i,
+            })),
+          );
+          setThumbnailImage(savedProduct.thumbnailImage ?? null);
           toast.success("Product updated");
           setLastSavedHash(
             JSON.stringify({
-              title: name,
-              description,
-              price: parsedPrice,
-              priceLocked,
-              images,
-              thumbnailImage,
+              title: savedProduct.title,
+              description: savedProduct.description ?? "",
+              price: savedProduct.price,
+              priceLocked: savedProduct.priceLocked ?? false,
+              variants: (savedProduct.variants ?? []).map((variant) => ({
+                id: variant.id,
+                price: variant.price,
+              })),
+              images: savedProduct.images ?? [],
+              thumbnailImage: savedProduct.thumbnailImage ?? null,
             }),
           );
           queryClient.invalidateQueries({ queryKey: productKeys.all });
         },
       },
     );
-  }, [updateMutation, productId, name, description, price, priceLocked, images, thumbnailImage, product, queryClient]);
+  }, [updateMutation, productId, name, description, price, priceLocked, variantPrices, images, thumbnailImage, product, queryClient, hasMultipleVariants]);
 
   return (
     <Sheet open onOpenChange={(open) => { if (!open) handleClose(); }}>
@@ -423,7 +504,7 @@ function ProductEditSheet() {
                       />
                     </div>
                     <div className="space-y-2 w-40">
-                      <Label htmlFor="price">Price (USD)</Label>
+                        <Label htmlFor="price">{hasMultipleVariants ? "Base Price (USD)" : "Price (USD)"}</Label>
                       <div className="flex items-center gap-2">
                         <Input id="price" type="number" step="0.01" min="0" value={price} onChange={(e) => setPrice(e.target.value)} />
                         <button
@@ -469,6 +550,50 @@ function ProductEditSheet() {
                         </div>
                       );
                     })()}
+
+                    {(product.variants?.length ?? 0) > 1 && (
+                      <div className="rounded-lg border border-border/40 bg-background/30 p-4 space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground/80">Variant Prices</p>
+                            <p className="text-xs text-foreground/50">Storefront listings use the lowest variant price.</p>
+                          </div>
+                          <span className="text-xs text-foreground/50">{variantPrices.length} variants</span>
+                        </div>
+                        <div className="space-y-3">
+                          {variantPrices.map((variant, index) => (
+                            <div key={variant.id} className="rounded-md border border-border/30 bg-background/50 p-3">
+                              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                                <div className="min-w-0 space-y-1">
+                                  <p className="text-sm font-medium text-foreground/90 truncate">{variant.title}</p>
+                                  <p className="text-xs text-foreground/50">{formatVariantAttributes(variant.attributes)}</p>
+                                  {variant.sku && <p className="text-xs text-foreground/40">SKU: {variant.sku}</p>}
+                                </div>
+                                <div className="w-full md:w-40 space-y-2">
+                                  <Label htmlFor={`variant-price-${variant.id}`} className="text-xs uppercase tracking-wide text-foreground/60">Price (USD)</Label>
+                                  <Input
+                                    id={`variant-price-${variant.id}`}
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={variant.price}
+                                    onChange={(e) => {
+                                      const next = e.target.value;
+                                      setVariantPrices((prev) =>
+                                        prev.map((item, itemIndex) =>
+                                          itemIndex === index ? { ...item, price: next } : item,
+                                        ),
+                                      );
+                                    }}
+                                    className="h-9 bg-background/60 border border-border/60 rounded-lg"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

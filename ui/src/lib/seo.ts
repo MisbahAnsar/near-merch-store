@@ -1,4 +1,5 @@
 import type { Collection, Product } from '@/integrations/api';
+import { getLowestVariantPrice } from './product-price';
 
 export const SITE_NAME = 'NEAR Merch Store';
 const SITE_HANDLE = '@nearmerch';
@@ -87,10 +88,11 @@ export function buildProductDescription(product: Product) {
   if (description) return truncateText(description, 180);
 
   const collectionName = product.collections?.[0]?.name;
+  const price = getLowestVariantPrice(product);
   const parts = [collectionName, product.brand].filter(Boolean);
   const fallback = parts.length > 0
-    ? `${parts.join(' - ')} official NEAR merchandise starting at $${product.price}.`
-    : `Official NEAR merchandise starting at $${product.price}.`;
+    ? `${parts.join(' - ')} official NEAR merchandise starting at $${price}.`
+    : `Official NEAR merchandise starting at $${price}.`;
 
   return truncateText(fallback, 180);
 }
@@ -113,6 +115,8 @@ export function buildCollectionDescription(collection: Collection | undefined, p
 }
 
 export function buildProductJsonLd(product: Product, url: string, image?: string) {
+  const price = getLowestVariantPrice(product);
+
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -131,7 +135,7 @@ export function buildProductJsonLd(product: Product, url: string, image?: string
     offers: {
       '@type': 'Offer',
       priceCurrency: product.currency || 'USD',
-      price: String(product.price),
+      price: String(price),
       availability: product.variants?.some((variant) => variant.availableForSale)
         ? 'https://schema.org/InStock'
         : 'https://schema.org/OutOfStock',

@@ -21,6 +21,7 @@ import { CartSidebar } from '@/components/marketplace/cart-sidebar';
 import { ProductCard } from '@/components/marketplace/product-card';
 import { useCart } from '@/hooks/use-cart';
 import { cn } from '@/lib/utils';
+import { getLowestVariantPrice } from '@/lib/product-price';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import {
   useSuspenseCollection,
@@ -342,7 +343,7 @@ function CollectionPageContent({
     }
     if (priceRange !== 'all') {
       result = result.filter((p) => {
-        const price = p.price;
+        const price = getLowestVariantPrice(p);
         switch (priceRange) {
           case 'under-50': return price < 50;
           case '50-100': return price >= 50 && price < 100;
@@ -354,8 +355,8 @@ function CollectionPageContent({
     }
 
     result = [...result].sort((a, b) => {
-      if (sortBy === 'price-low-high') return a.price - b.price;
-      if (sortBy === 'price-high-low') return b.price - a.price;
+      if (sortBy === 'price-low-high') return getLowestVariantPrice(a) - getLowestVariantPrice(b);
+      if (sortBy === 'price-high-low') return getLowestVariantPrice(b) - getLowestVariantPrice(a);
       return 0;
     });
     return result;

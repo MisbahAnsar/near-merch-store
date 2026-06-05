@@ -85,6 +85,7 @@ export function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                       variant="horizontal"
                       hideFavorite
                       hidePrice
+                      priceOverride={item.unitPrice}
                       className="pb-4 hover:shadow-none !p-0 !bg-transparent"
                       imageOverride={item.imageUrl}
                       actionSlot={
@@ -155,7 +156,7 @@ export function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                         </div>
 
                         <div className="text-base font-semibold whitespace-nowrap h-[38px] flex items-center">
-                          ${(item.product.price * item.quantity).toFixed(2)}
+                          ${(item.unitPrice * item.quantity).toFixed(2)}
                         </div>
                       </div>
                     </div>

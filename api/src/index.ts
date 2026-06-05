@@ -2205,6 +2205,7 @@ export default createPlugin({
                 description: input.description,
                 price: input.price,
                 priceLocked: input.priceLocked,
+                variants: input.variants,
                 images: input.images,
                 thumbnailImage: input.thumbnailImage,
               });

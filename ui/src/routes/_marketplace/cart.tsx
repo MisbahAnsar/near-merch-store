@@ -105,6 +105,7 @@ function CartPage() {
                       variant="horizontal"
                       hideFavorite
                       hidePrice
+                      priceOverride={item.unitPrice}
                         className="hover:shadow-none !bg-transparent !p-0"
                       actionSlot={
                         <button
@@ -161,10 +162,10 @@ function CartPage() {
                             </button>
                           </div>
 
-                          <div className="text-base font-semibold whitespace-nowrap h-[38px] flex items-center">
-                            ${(item.product.price * item.quantity).toFixed(2)}
-                          </div>
+                        <div className="text-base font-semibold whitespace-nowrap h-[38px] flex items-center">
+                          ${(item.unitPrice * item.quantity).toFixed(2)}
                         </div>
+                      </div>
                       </div>
                     </ProductCard>
                     </div>

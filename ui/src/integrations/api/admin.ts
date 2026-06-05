@@ -114,6 +114,7 @@ export function useUpdateProduct() {
       description?: string | null;
       price?: number;
       priceLocked?: boolean;
+      variants?: Array<{ id: string; price: number }>;
       images?: Array<ProductImage>;
       thumbnailImage?: string | null;
     }) => {

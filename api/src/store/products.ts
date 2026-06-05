@@ -57,17 +57,18 @@ export class ProductStore extends Context.Tag("ProductStore")<
       id: string,
       metadata: ProductMetadata,
     ) => Effect.Effect<Product | null, Error>;
-    readonly updateProduct: (
-      id: string,
-      data: {
-        name?: string;
-        description?: string | null;
-        price?: number;
-        priceLocked?: boolean;
-        images?: ProductImage[];
-        thumbnailImage?: string | null;
-      },
-    ) => Effect.Effect<Product | null, Error>;
+      readonly updateProduct: (
+        id: string,
+        data: {
+          name?: string;
+          description?: string | null;
+          price?: number;
+          priceLocked?: boolean;
+          variants?: Array<{ id: string; price: number }>;
+          images?: ProductImage[];
+          thumbnailImage?: string | null;
+        },
+      ) => Effect.Effect<Product | null, Error>;
   }
 >() {}
 
@@ -815,9 +816,22 @@ export const ProductStoreLive = Layer.effect(
           try: async () => {
             const now = new Date();
             const updateData: Record<string, unknown> = { updatedAt: now };
+            const existingProductResults = await db
+              .select({ price: schema.products.price })
+              .from(schema.products)
+              .where(eq(schema.products.id, id))
+              .limit(1);
+
+            if (existingProductResults.length === 0) {
+              return null;
+            }
+
+            const existingProduct = existingProductResults[0]!;
+            const nextPrice = data.price !== undefined ? Math.round(data.price * 100) : undefined;
+
             if (data.name !== undefined) updateData.name = data.name;
             if (data.description !== undefined) updateData.description = data.description;
-            if (data.price !== undefined) updateData.price = Math.round(data.price * 100);
+            if (nextPrice !== undefined) updateData.price = nextPrice;
             if (data.priceLocked !== undefined) updateData.priceLocked = data.priceLocked;
             if (data.thumbnailImage !== undefined) updateData.thumbnailImage = data.thumbnailImage;
 
@@ -825,6 +839,64 @@ export const ProductStoreLive = Layer.effect(
               .update(schema.products)
               .set(updateData)
               .where(eq(schema.products.id, id));
+
+            if (nextPrice !== undefined) {
+              const existingVariants = await db
+                .select({ id: schema.productVariants.id, price: schema.productVariants.price })
+                .from(schema.productVariants)
+                .where(eq(schema.productVariants.productId, id));
+
+              const variantsToSync =
+                existingVariants.length === 1
+                  ? existingVariants
+                  : existingVariants.filter((variant) => variant.price === existingProduct.price);
+
+              if (variantsToSync.length > 0) {
+                await db
+                  .update(schema.productVariants)
+                  .set({ price: nextPrice })
+                  .where(
+                    and(
+                      eq(schema.productVariants.productId, id),
+                      inArray(
+                        schema.productVariants.id,
+                        variantsToSync.map((variant) => variant.id),
+                      ),
+                    ),
+                  );
+              }
+            }
+
+            if (data.variants !== undefined && data.variants.length > 0) {
+              await Promise.all(
+                data.variants.map((variant) =>
+                  db
+                    .update(schema.productVariants)
+                    .set({ price: Math.round(variant.price * 100) })
+                    .where(
+                      and(
+                        eq(schema.productVariants.productId, id),
+                        eq(schema.productVariants.id, variant.id),
+                      ),
+                    ),
+                ),
+              );
+
+              if (data.price === undefined) {
+                const updatedVariants = await db
+                  .select({ price: schema.productVariants.price })
+                  .from(schema.productVariants)
+                  .where(eq(schema.productVariants.productId, id));
+
+                if (updatedVariants.length > 0) {
+                  const lowestVariantPrice = Math.min(...updatedVariants.map((variant) => variant.price));
+                  await db
+                    .update(schema.products)
+                    .set({ price: lowestVariantPrice, updatedAt: now })
+                    .where(eq(schema.products.id, id));
+                }
+              }
+            }
 
             if (data.images !== undefined) {
               await db

@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { absoluteUrl, createSeoHead, SITE_NAME } from "@/lib/seo";
+import { getLowestVariantPrice } from "@/lib/product-price";
 import {
   productLoaders,
   useFeaturedProducts,
@@ -703,7 +704,7 @@ function ProductCarousel() {
       slug: product.slug,
       description: product.description || product.title,
       image: product.thumbnailImage || product.images?.[0]?.url || null,
-      price: product.price ? `$${product.price.toFixed(2)}` : null,
+      price: `$${getLowestVariantPrice(product).toFixed(2)}`,
       product: product,
     }));
   }, [products]);

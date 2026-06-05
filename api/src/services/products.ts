@@ -61,16 +61,18 @@ export class ProductService extends Context.Tag('ProductService')<
     readonly deleteCategory: (slug: string) => Effect.Effect<{ success: boolean }, Error>;
     readonly createProduct: (product: ProductWithImages) => Effect.Effect<Product, Error>;
     readonly deleteProduct: (id: string) => Effect.Effect<void, Error>;
-    readonly updateProduct: (
-      id: string,
-      data: {
-        name?: string;
-        description?: string | null;
-        price?: number;
-        images?: import('../schema').ProductImage[];
-        thumbnailImage?: string | null;
-      },
-    ) => Effect.Effect<Product | null, Error>;
+      readonly updateProduct: (
+        id: string,
+        data: {
+          name?: string;
+          description?: string | null;
+          price?: number;
+          priceLocked?: boolean;
+          variants?: Array<{ id: string; price: number }>;
+          images?: import('../schema').ProductImage[];
+          thumbnailImage?: string | null;
+        },
+      ) => Effect.Effect<Product | null, Error>;
   }
 >() {}
 

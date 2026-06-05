@@ -1063,7 +1063,7 @@ function CheckoutPage() {
                         </p>
                       </div>
                       <div className="text-base text-right">
-                        ${(item.product.price * item.quantity).toFixed(2)}
+                        ${(item.unitPrice * item.quantity).toFixed(2)}
                       </div>
                     </div>
                     );

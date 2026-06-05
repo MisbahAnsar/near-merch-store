@@ -23,6 +23,7 @@ import {
   getOptionValue,
   getVariantImageUrl,
 } from "@/lib/product-utils";
+import { getLowestVariantPrice } from "@/lib/product-price";
 
 function getTotalFeePercentage(metadata: ProductMetadata | undefined): number {
   if (!metadata?.fees?.length) return 0;
@@ -39,6 +40,7 @@ interface ProductCardProps {
   hideActions?: boolean;
   hideFavorite?: boolean;
   hidePrice?: boolean;
+  priceOverride?: number;
   actionSlot?: React.ReactNode;
   children?: React.ReactNode;
   imageOverride?: string;
@@ -53,6 +55,7 @@ export function ProductCard({
   hideActions = false,
   hideFavorite = false,
   hidePrice = false,
+  priceOverride,
   actionSlot,
   children,
   imageOverride,
@@ -67,6 +70,7 @@ export function ProductCard({
         hideActions={hideActions}
         hideFavorite={hideFavorite}
         hidePrice={hidePrice}
+        priceOverride={priceOverride}
         actionSlot={actionSlot}
         imageOverride={imageOverride}
       >
@@ -85,6 +89,7 @@ export function ProductCard({
         hideActions={hideActions}
         hideFavorite={hideFavorite}
         hidePrice={hidePrice}
+        priceOverride={priceOverride}
         actionSlot={actionSlot}
       >
         {children}
@@ -103,6 +108,7 @@ function SuspendedProductCard({
   hideActions,
   hideFavorite,
   hidePrice,
+  priceOverride,
   actionSlot,
   children,
   imageOverride,
@@ -117,6 +123,7 @@ function SuspendedProductCard({
       hideActions={hideActions}
       hideFavorite={hideFavorite}
       hidePrice={hidePrice}
+      priceOverride={priceOverride}
       actionSlot={actionSlot}
       imageOverride={imageOverride}
     >
@@ -149,6 +156,7 @@ function VerticalProductLayout({
   hideActions,
   hideFavorite,
   hidePrice,
+  priceOverride,
   actionSlot,
   children,
   imageOverride: _imageOverride,
@@ -176,6 +184,7 @@ function VerticalProductLayout({
   const needsSize = product ? requiresSize(product.collections) : false;
   const availableSizes = orderedSizes.length > 0 ? orderedSizes : ["N/A"];
   const availableVariants = product?.variants || [];
+  const displayPrice = priceOverride ?? getLowestVariantPrice(product);
 
   useEffect(() => {
     if (isExpanded && product) {
@@ -360,7 +369,7 @@ function VerticalProductLayout({
             )}
           >
             <div className={cn("font-medium text-[#00EC97]", priceSize)}>
-              ${product.price ? product.price.toFixed(2) : "0.00"}
+              ${displayPrice ? displayPrice.toFixed(2) : "0.00"}
             </div>
             {(() => {
               const feePct = getTotalFeePercentage(product.metadata as ProductMetadata | undefined);
@@ -547,6 +556,7 @@ function HorizontalProductLayout({
   product,
   className,
   hidePrice,
+  priceOverride,
   actionSlot,
   children,
   imageOverride,
@@ -560,6 +570,7 @@ function HorizontalProductLayout({
     variantImages[0]?.url ||
     product.variants?.[0]?.fulfillmentConfig?.files?.[0]?.url ||
     product.images?.find((img) => img.type !== "mockup" && img.type !== "detail")?.url;
+  const displayPrice = priceOverride ?? getLowestVariantPrice(product);
 
   return (
     <div
@@ -625,7 +636,7 @@ function HorizontalProductLayout({
         {!hidePrice && (
           <div className="mt-2 flex items-end justify-between">
             <div className="font-medium text-foreground text-sm">
-              ${product.price ? product.price.toFixed(2) : "0.00"}
+              ${displayPrice ? displayPrice.toFixed(2) : "0.00"}
             </div>
           </div>
         )}
