@@ -3,7 +3,6 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import Plugin from '@/index';
 import type { DatabaseType } from '@/db';
 import * as schema from '@/db/schema';
-import { config as loadEnv } from 'dotenv';
 import pluginDevConfig from '../plugin.dev';
 import { createPluginRuntime } from 'every-plugin';
 import { dirname, join } from 'node:path';
@@ -13,28 +12,30 @@ import pg from 'postgres';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-loadEnv({ path: join(__dirname, '../../.env') });
+export const TEST_DB_URL = process.env.TEST_DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/api_test';
 
-function resolveTestDatabaseUrl() {
-  if (process.env.TEST_DATABASE_URL) {
-    return process.env.TEST_DATABASE_URL;
+function normalizeDatabaseUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.username = '';
+    parsed.password = '';
+    parsed.search = '';
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+  } catch {
+    return url;
   }
-
-  const apiDatabaseUrl = process.env.API_DATABASE_URL;
-  if (apiDatabaseUrl?.startsWith('postgres://') || apiDatabaseUrl?.startsWith('postgresql://')) {
-    try {
-      const derivedUrl = new URL(apiDatabaseUrl);
-      derivedUrl.pathname = '/api_test';
-      return derivedUrl.toString();
-    } catch {
-      // Fall back to the repo default below.
-    }
-  }
-
-  return 'postgres://postgres:postgres@localhost:5433/api_test';
 }
 
-export const TEST_DB_URL = resolveTestDatabaseUrl();
+const API_DB_URL = process.env.API_DATABASE_URL;
+
+if (API_DB_URL && normalizeDatabaseUrl(API_DB_URL) === normalizeDatabaseUrl(TEST_DB_URL)) {
+  const apiMasked = API_DB_URL.replace(/:\/\/.*@/, '://***@');
+  const testMasked = TEST_DB_URL.replace(/:\/\/.*@/, '://***@');
+  throw new Error(
+    `[Test Setup] SAFETY: TEST_DATABASE_URL must point to a different database than API_DATABASE_URL. ` +
+    `API=${apiMasked} TEST=${testMasked}`
+  );
+}
 
 if (
   !TEST_DB_URL.includes('localhost') &&
@@ -64,6 +65,7 @@ let _runtime: ReturnType<typeof createPluginRuntime> | null = null;
 let _testDb: DatabaseType | null = null;
 let _postgresClient: ReturnType<typeof pg> | null = null;
 let _migrationsRun = false;
+let _suiteDatabaseCleared = false;
 
 async function ensureTestDatabaseExists(databaseUrl: string) {
   const url = new URL(databaseUrl);
@@ -98,6 +100,30 @@ async function ensureTestDatabaseExists(databaseUrl: string) {
   } finally {
     await adminClient.end();
   }
+}
+
+async function clearTestDatabaseData() {
+  if (!_postgresClient) {
+    return;
+  }
+
+  const tables = await _postgresClient`
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename <> '__drizzle_migrations'
+    ORDER BY tablename
+  `;
+
+  if (tables.length === 0) {
+    return;
+  }
+
+  const tableList = tables
+    .map(({ tablename }) => `"${String(tablename).replace(/"/g, '""')}"`)
+    .join(', ');
+
+  await _postgresClient.unsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
 }
 
 export function getRuntime() {
@@ -136,6 +162,10 @@ export function getTestDb(): DatabaseType {
 
 export async function runMigrations() {
   if (_migrationsRun) {
+    if (!_suiteDatabaseCleared) {
+      await clearTestDatabaseData();
+      _suiteDatabaseCleared = true;
+    }
     return;
   }
 
@@ -149,7 +179,9 @@ export async function runMigrations() {
 
   try {
     await migrate(db, { migrationsFolder });
+    await clearTestDatabaseData();
     _migrationsRun = true;
+    _suiteDatabaseCleared = true;
     console.log('[Test Setup] Migrations completed successfully');
   } catch (error) {
     console.error('[Test Setup] Migration failed:', error);
@@ -180,5 +212,6 @@ export async function teardown() {
     await _runtime.shutdown();
     _runtime = null;
   }
+  _suiteDatabaseCleared = false;
   _migrationsRun = false;
 }

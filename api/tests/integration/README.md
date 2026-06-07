@@ -105,7 +105,8 @@ const TEST_CONFIG = {
 };
 ```
 
-If `TEST_DATABASE_URL` is unset, the test setup derives a local test URL from `API_DATABASE_URL` and creates the `api_test` database if it does not already exist.
+If `TEST_DATABASE_URL` is unset, the test setup uses the local compose default at `postgres://postgres:postgres@localhost:5433/api_test` and creates the `api_test` database if it does not already exist.
+`TEST_DATABASE_URL` must point to a different database than `API_DATABASE_URL`.
 
 ---
 
