@@ -276,6 +276,7 @@ export function useUpdateProductListing() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: productKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
     },
   });
 }

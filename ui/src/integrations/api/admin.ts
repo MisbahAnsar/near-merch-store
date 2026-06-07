@@ -21,6 +21,11 @@ const assetKeys = {
     [...assetKeys.all, options] as const,
 };
 
+const adminProductKeys = {
+  all: ["admin-products"] as const,
+  detail: (id: string) => [...adminProductKeys.all, id] as const,
+};
+
 export function useBrowseCatalog(
   provider: string,
   options?: { limit?: number; offset?: number; enabled?: boolean },
@@ -103,6 +108,14 @@ export function useBuildProduct() {
         description: error instanceof Error ? error.message : "Unknown error",
       });
     },
+  });
+}
+
+export function useAdminProduct(id: string) {
+  return useQuery({
+    queryKey: adminProductKeys.detail(id),
+    queryFn: async () => apiClient.getAdminProduct({ id }),
+    enabled: !!id,
   });
 }
 

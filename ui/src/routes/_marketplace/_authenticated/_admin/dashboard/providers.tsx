@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
@@ -33,6 +33,12 @@ import {
   LULU_WEBHOOK_EVENTS,
   type PrintfulWebhookEventType,
 } from "@/integrations/api/providers";
+import {
+  useProviderTestState,
+  useRunProviderTestStep,
+  useSaveProviderTestScenario,
+} from "@/integrations/api/provider-tests";
+import { providerTestKeys } from "@/integrations/api/provider-tests";
 
 function ProvidersError({ error }: { error: Error }) {
   const router = useRouter();
@@ -61,14 +67,207 @@ function ProvidersError({ error }: { error: Error }) {
   );
 }
 
+function ProviderTestPanel({
+  provider,
+  title,
+  description,
+  defaultScenario,
+}: {
+  provider: "printful" | "lulu" | "manual";
+  title: string;
+  description: string;
+  defaultScenario: Record<string, unknown>;
+}) {
+  const stateQuery = useProviderTestState(provider);
+  const saveScenario = useSaveProviderTestScenario();
+  const runStep = useRunProviderTestStep();
+  const [scenarioText, setScenarioText] = useState(() =>
+    JSON.stringify(defaultScenario, null, 2)
+  );
+
+  useEffect(() => {
+    const scenario = stateQuery.data?.state?.scenario;
+    if (scenario) {
+      setScenarioText(JSON.stringify(scenario, null, 2));
+    }
+  }, [stateQuery.data?.state?.scenario, provider]);
+
+  const run = async (step: "connection" | "quote" | "checkout" | "payment_webhook" | "provider_webhook") => {
+    try {
+      const result = await runStep.mutateAsync({ provider, step });
+      toast.success(`${title} ${step} ran`, { description: result.success ? "Step completed" : result.error ?? "Step failed" });
+    } catch (error) {
+      toast.error(`Failed to run ${step}`, {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  };
+
+  const save = async () => {
+    try {
+      const parsed = JSON.parse(scenarioText) as Record<string, unknown>;
+      await saveScenario.mutateAsync({ provider, scenario: parsed });
+      toast.success(`${title} scenario saved`);
+    } catch (error) {
+      toast.error(`Failed to save ${title} scenario`, {
+        description: error instanceof Error ? error.message : "Scenario must be valid JSON",
+      });
+    }
+  };
+
+  const state = stateQuery.data?.state;
+  const latestResults = state?.latestStepResults ?? {};
+  const latestPayloads = state?.latestWebhookPayloads ?? {};
+  const hasQuote = Boolean(latestResults.quote && !(latestResults.quote as { error?: string }).error);
+  const hasCheckout = Boolean(latestResults.checkout && !(latestResults.checkout as { error?: string }).error);
+  const hasPaymentWebhook = Boolean(latestResults.payment_webhook && !(latestResults.payment_webhook as { error?: string }).error);
+  const canRunCheckout = hasQuote;
+  const canRunPaymentWebhook = hasCheckout;
+  const canRunProviderWebhook = hasPaymentWebhook;
+
+  if (stateQuery.isLoading) {
+    return (
+      <div className="rounded-2xl bg-background border border-border/60 p-6">
+        <div className="flex items-center gap-3 text-sm text-foreground/80">
+          <Loader2 className="size-4 animate-spin" />
+          Loading {title} test state...
+        </div>
+      </div>
+    );
+  }
+
+  if (stateQuery.isError) {
+    return (
+      <div className="rounded-2xl bg-background border border-border/60 p-6 space-y-3">
+        <div>
+          <p className="font-semibold text-destructive">Failed to load {title} test state</p>
+          <p className="text-sm text-foreground/80">{stateQuery.error instanceof Error ? stateQuery.error.message : "Unknown error"}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => stateQuery.refetch()}
+          className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl bg-background border border-border/60 p-6 space-y-5">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-xl font-bold">{title}</h3>
+          <p className="text-sm text-foreground/90 dark:text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => stateQuery.refetch()}
+            className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60"
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saveScenario.isPending}
+            className="px-3 py-2 rounded-lg bg-[#00EC97] text-black text-sm font-semibold disabled:opacity-50"
+          >
+            {saveScenario.isPending ? <Loader2 className="size-4 animate-spin inline mr-2" /> : null}
+            Save Test Product
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor={`scenario-${provider}`}>Scenario JSON</Label>
+          <textarea
+            id={`scenario-${provider}`}
+            value={scenarioText}
+            onChange={(e) => setScenarioText(e.target.value)}
+            rows={18}
+            className="w-full rounded-xl border border-border/60 bg-background/60 p-3 font-mono text-xs text-foreground outline-none focus:border-[#00EC97]"
+          />
+        </div>
+        <div className="space-y-3 text-sm">
+          <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+            <div className="text-xs uppercase text-foreground/60 mb-1">Test Product</div>
+            <div className="font-mono text-xs break-all">{state?.testProductId ?? "Not created yet"}</div>
+          </div>
+          <div className="rounded-xl border border-border/60 bg-background/40 p-3 space-y-2">
+            <div className="text-xs uppercase text-foreground/60">Step Status</div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className={`px-2 py-1 rounded-full border ${state ? "border-[#00EC97]/40 text-[#00EC97]" : "border-border/60 text-foreground/70"}`}>state</span>
+              <span className={`px-2 py-1 rounded-full border ${hasQuote ? "border-[#00EC97]/40 text-[#00EC97]" : "border-border/60 text-foreground/70"}`}>quote</span>
+              <span className={`px-2 py-1 rounded-full border ${hasCheckout ? "border-[#00EC97]/40 text-[#00EC97]" : "border-border/60 text-foreground/70"}`}>checkout</span>
+              <span className={`px-2 py-1 rounded-full border ${hasPaymentWebhook ? "border-[#00EC97]/40 text-[#00EC97]" : "border-border/60 text-foreground/70"}`}>payment</span>
+            </div>
+            <div className="text-xs text-foreground/60">
+              Selected rates: <span className="font-mono text-foreground/90">{state?.selectedRates ? JSON.stringify(state.selectedRates) : "none"}</span>
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+            <div className="text-xs uppercase text-foreground/60 mb-1">Latest Order</div>
+            <div className="font-mono text-xs break-all">
+              {state?.latestOrderId ? (
+                <Link
+                  to="/dashboard/orders"
+                  search={{ orderId: state.latestOrderId, search: undefined }}
+                  className="text-[#00EC97] hover:underline"
+                >
+                  {state.latestOrderId}
+                </Link>
+              ) : (
+                "None"
+              )}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+            <div className="text-xs uppercase text-foreground/60 mb-1">Latest Results</div>
+            <pre className="max-h-48 overflow-auto text-xs whitespace-pre-wrap">{JSON.stringify(latestResults, null, 2)}</pre>
+          </div>
+          <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+            <div className="text-xs uppercase text-foreground/60 mb-1">Latest Webhooks</div>
+            <pre className="max-h-48 overflow-auto text-xs whitespace-pre-wrap">{JSON.stringify(latestPayloads, null, 2)}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => run("connection")} disabled={runStep.isPending} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Connection</button>
+        <button type="button" onClick={() => run("quote")} disabled={runStep.isPending} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Quote</button>
+        <button type="button" onClick={() => run("checkout")} disabled={runStep.isPending || !canRunCheckout} title={!canRunCheckout ? "Run quote first so selected rates are available" : undefined} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Checkout</button>
+        <button type="button" onClick={() => run("payment_webhook")} disabled={runStep.isPending || !canRunPaymentWebhook} title={!canRunPaymentWebhook ? "Run checkout first" : undefined} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Paid Webhook</button>
+        <button type="button" onClick={() => run("provider_webhook")} disabled={runStep.isPending || !canRunProviderWebhook} title={!canRunProviderWebhook ? "Run payment webhook first" : undefined} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Provider Webhook</button>
+      </div>
+    </div>
+  );
+}
+
 export const Route = createFileRoute(
   "/_marketplace/_authenticated/_admin/dashboard/providers"
 )({
-  loader: async () => {
+  loader: async ({ context }) => {
+    const queryClient = context.queryClient;
     const [printful, lulu, manual] = await Promise.all([
       apiClient.getProviderConfig({ provider: "printful" }),
       apiClient.getProviderConfig({ provider: "lulu" }),
       apiClient.getProviderConfig({ provider: "manual" }),
+      queryClient.prefetchQuery({
+        queryKey: providerTestKeys.state("printful"),
+        queryFn: () => apiClient.getProviderTestState({ provider: "printful" }),
+      }),
+      queryClient.prefetchQuery({
+        queryKey: providerTestKeys.state("lulu"),
+        queryFn: () => apiClient.getProviderTestState({ provider: "lulu" }),
+      }),
+      queryClient.prefetchQuery({
+        queryKey: providerTestKeys.state("manual"),
+        queryFn: () => apiClient.getProviderTestState({ provider: "manual" }),
+      }),
     ]);
 
     return {
@@ -814,17 +1013,133 @@ function ProvidersPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-background border border-border/60 p-4">
-        <h4 className="font-semibold text-foreground mb-2">
-          About Provider Settings
-        </h4>
-        <p className="text-sm text-foreground/90 dark:text-muted-foreground">
-          Configure how each fulfillment provider connects to your store. Printful and Lulu use
-          webhooks for real-time order updates (shipments, cancellations, etc.). The Basic
-          provider sends email notifications to the addresses you specify when a manual order
-          is placed. Secret keys are stored securely and used to verify incoming webhook
-          signatures where applicable.
-        </p>
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-2xl font-bold tracking-tight mb-2">Provider Test Harness</h3>
+          <p className="text-sm text-foreground/90 dark:text-muted-foreground">
+            Run provider tests step by step with a deterministic hidden test product and inspect each response.
+          </p>
+        </div>
+
+        <ProviderTestPanel
+          provider="manual"
+          title="Manual"
+          description="Manual fulfillment test flow with notification emails and the admin order dashboard."
+          defaultScenario={{
+            quantity: 1,
+            shippingAddress: {
+              firstName: "Test",
+              lastName: "Customer",
+              addressLine1: "123 Test St",
+              city: "Portland",
+              state: "OR",
+              postCode: "97201",
+              country: "US",
+              email: "test@example.com",
+            },
+            product: {
+              name: "Manual provider test product",
+              price: 25,
+              currency: "USD",
+              fulfillmentProvider: "manual",
+              metadata: {
+                providerDetails: {
+                  manual: {
+                    notificationEmails: ["orders@nearmerch.com"],
+                    ownerAccountIds: ["test.near"],
+                    replyToEmail: "orders@nearmerch.com",
+                  },
+                },
+              },
+            },
+          }}
+        />
+
+        <ProviderTestPanel
+          provider="printful"
+          title="Printful"
+          description="Quote, checkout, paid webhook, and Printful webhook simulation."
+          defaultScenario={{
+            quantity: 1,
+            shippingAddress: {
+              firstName: "Test",
+              lastName: "Customer",
+              addressLine1: "123 Test St",
+              city: "Portland",
+              state: "OR",
+              postCode: "97201",
+              country: "US",
+              email: "test@example.com",
+            },
+            product: {
+              name: "Printful provider test product",
+              price: 25,
+              currency: "USD",
+              fulfillmentProvider: "printful",
+              variants: [
+                {
+                  id: "printful-test-variant",
+                  name: "Default",
+                  price: 25,
+                  currency: "USD",
+                  attributes: [],
+                  fulfillmentConfig: {
+                    providerName: "printful",
+                    providerConfig: {},
+                    files: [],
+                  },
+                  inStock: true,
+                },
+              ],
+            },
+          }}
+        />
+
+        <ProviderTestPanel
+          provider="lulu"
+          title="Lulu"
+          description="Quote, checkout, paid webhook, and Lulu print-job webhook simulation."
+          defaultScenario={{
+            quantity: 1,
+            shippingAddress: {
+              firstName: "Test",
+              lastName: "Customer",
+              addressLine1: "123 Test St",
+              city: "Portland",
+              state: "OR",
+              postCode: "97201",
+              country: "US",
+              email: "test@example.com",
+            },
+            product: {
+              name: "Lulu provider test product",
+              price: 25,
+              currency: "USD",
+              fulfillmentProvider: "lulu",
+              variants: [
+                {
+                  id: "lulu-test-variant",
+                  name: "Default",
+                  price: 25,
+                  currency: "USD",
+                  attributes: [],
+                  fulfillmentConfig: {
+                    providerName: "lulu",
+                    providerConfig: {
+                      podPackageId: "TEST",
+                      pageCount: 32,
+                      coverPdfUrl: "https://example.com/cover.pdf",
+                      interiorPdfUrl: "https://example.com/interior.pdf",
+                      shippingLevel: "MAIL",
+                    },
+                    files: [],
+                  },
+                  inStock: true,
+                },
+              ],
+            },
+          }}
+        />
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
 import type {
   Attribute,
   ProviderWebhookEventType,
+  ProviderTestScenario,
   ProductOption,
   ProductMetadata,
   ManualProviderSettings as ManualProviderSettingsType,
@@ -401,6 +402,28 @@ export const providerConfigs = pgTable("provider_configs", {
     .notNull()
     .defaultNow(),
 });
+
+export const providerTestStates = pgTable(
+  "provider_test_states",
+  {
+    provider: text("provider").primaryKey(),
+    testProductId: text("test_product_id"),
+    selectedRates: jsonb("selected_rates").$type<Record<string, string>>(),
+    scenario: jsonb("scenario").$type<ProviderTestScenario>(),
+    latestOrderId: text("latest_order_id"),
+    latestStepResults: jsonb("latest_step_results").$type<Record<string, unknown>>(),
+    latestWebhookPayloads: jsonb("latest_webhook_payloads").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("provider_test_states_updated_idx").on(table.updatedAt),
+  ],
+);
 
 
 

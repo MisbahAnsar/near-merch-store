@@ -83,6 +83,9 @@ export function handleOrderPaidEffect(options: {
           const globalOwnerIds: string[] = Array.isArray(settings?.ownerAccountIds) ? (settings!.ownerAccountIds as string[]) : [];
           const replyTo: string | undefined = typeof settings?.replyToEmail === 'string' ? settings.replyToEmail : undefined;
           const fromEmail = runtime.fulfillmentConfig.manual?.fromEmail ?? 'orders@nearmerch.com';
+          const orderLink = runtime.hostUrl
+            ? new URL(`/dashboard/orders?orderId=${encodeURIComponent(order.id)}`, runtime.hostUrl).toString()
+            : `/dashboard/orders?orderId=${encodeURIComponent(order.id)}`;
 
           const productEmailEntries = (order.items ?? [])
             .filter((item) => item.fulfillmentProvider === 'manual')
@@ -107,14 +110,10 @@ export function handleOrderPaidEffect(options: {
               .map((item) => `- ${item.productName}${item.variantName ? ` (${item.variantName})` : ''} x${item.quantity}`)
               .join('\n');
 
-            const shippingInfo = order.shippingAddress
-              ? `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}\n${order.shippingAddress.addressLine1}\n${order.shippingAddress.city}, ${order.shippingAddress.state || ''} ${order.shippingAddress.postCode}\n${order.shippingAddress.country}\n${order.shippingAddress.email}`
-              : 'No shipping address';
-
             yield* emailService.sendNotification({
               to: notificationEmails,
               subject: `New order received: ${order.id}`,
-              body: `A new order has been placed and paid.\n\nOrder ID: ${order.id}\nTotal: ${order.currency.toUpperCase()} ${order.totalAmount.toFixed(2)}\n\nItems:\n${itemSummary}\n\nShipping:\n${shippingInfo}`,
+              body: `A new order has been placed and paid.\n\nOrder ID: ${order.id}\nTotal: ${order.currency.toUpperCase()} ${order.totalAmount.toFixed(2)}\n\nItems:\n${itemSummary}\n\nView the order in the admin dashboard:\n${orderLink}`,
               replyTo,
             }).pipe(
               Effect.tap(() =>

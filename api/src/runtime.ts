@@ -99,6 +99,7 @@ export async function createMarketplaceRuntime(
 	paymentConfig?: PaymentConfig,
 	exclusiveCheckConfig?: ExclusiveCheckConfig,
 	storageConfig?: StorageConfig,
+	options?: { hostUrl?: string },
 ): Promise<MarketplaceRuntime> {
 	const runtime = createPluginRuntime({
 		registry: {
@@ -312,6 +313,7 @@ export async function createMarketplaceRuntime(
 		exclusiveCheckProviders,
 		storageProviders,
 		fulfillmentConfig,
+		hostUrl: options?.hostUrl,
 		getProvider: (name: string) => providers.find((p) => p.name === name) ?? null,
 		getPaymentProvider: (name: string) => paymentProviders.find((p) => p.name === name) ?? null,
 		getExclusiveCheckProvider: (name: string) => exclusiveCheckProviders.find((p) => p.name === name) ?? null,
@@ -326,6 +328,7 @@ export interface MarketplaceRuntime {
 	readonly exclusiveCheckProviders: ExclusiveCheckProvider[];
 	readonly storageProviders: StorageProvider[];
 	readonly fulfillmentConfig: FulfillmentConfig;
+	readonly hostUrl?: string;
 	readonly getProvider: (name: string) => FulfillmentProvider | null;
 	readonly getPaymentProvider: (name: string) => PaymentProvider | null;
 	readonly getExclusiveCheckProvider: (name: string) => ExclusiveCheckProvider | null;

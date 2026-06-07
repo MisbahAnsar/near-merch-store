@@ -87,7 +87,7 @@ bun test --watch api/tests/integration
 ## Test Setup
 
 All tests use:
-- **In-memory SQLite database** for isolation
+- **Local PostgreSQL database** for isolation
 - **Vitest** as the test runner
 - **Database migrations** run before each test suite
 - **Cleanup** after each test to ensure independence
@@ -100,11 +100,13 @@ The tests use a test configuration defined in `api/tests/setup.ts`:
 const TEST_CONFIG = {
   variables: pluginDevConfig.config.variables,
   secrets: {
-    API_DATABASE_URL: 'file:./api-test.db',
-    API_DATABASE_AUTH_TOKEN: undefined,
+    API_DATABASE_URL: 'postgres://.../api_test',
   },
 };
 ```
+
+If `TEST_DATABASE_URL` is unset, the test setup uses the local compose default at `postgres://postgres:postgres@localhost:5433/api_test` and creates the `api_test` database if it does not already exist.
+`TEST_DATABASE_URL` must point to a different database than `API_DATABASE_URL`.
 
 ---
 
@@ -291,7 +293,7 @@ These tests are designed to run in CI/CD pipelines:
 
 2. **Clear test database**
    ```bash
-   rm -f api/api-test.db
+   psql postgres://postgres:postgres@localhost:5433/api_test -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
    ```
 
 3. **Verify environment variables**

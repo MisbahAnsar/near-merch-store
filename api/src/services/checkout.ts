@@ -691,7 +691,16 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
               if (!provider) continue;
 
               const selectedRateId = selectedRates[providerName];
-              if (!selectedRateId) continue;
+              if (!selectedRateId) {
+                return yield* Effect.fail(
+                  new CheckoutError({
+                    code: "NO_SHIPPING_RATE_SELECTED",
+                    provider: providerName,
+                    userId,
+                    cause: new Error(`No shipping rate selected for provider ${providerName}`),
+                  }),
+                );
+              }
 
               const fulfillmentItems = mapToFulfillmentItems(providerItems);
 
@@ -736,7 +745,27 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
                   providerTaxResults.push(providerTax);
                   tax += providerTax.taxAmount;
                   vat += providerTax.vat;
+                } else {
+                  return yield* Effect.fail(
+                    new CheckoutError({
+                      code: "INVALID_SHIPPING_RATE",
+                      provider: providerName,
+                      userId,
+                      cause: new Error(
+                        `Selected shipping rate ${selectedRateId} is no longer available for provider ${providerName}`,
+                      ),
+                    }),
+                  );
                 }
+              } else {
+                return yield* Effect.fail(
+                  new CheckoutError({
+                    code: "QUOTE_FAILED",
+                    provider: providerName,
+                    userId,
+                    cause: new Error(`Failed to quote shipping for provider ${providerName}`),
+                  }),
+                );
               }
             }
 
@@ -823,23 +852,23 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
               providerName,
               providerItems,
             ] of itemsByProvider.entries()) {
-              if (providerName === "manual") {
-                continue;
+              const provider = runtime.getProvider(providerName);
+              if (!provider) {
+                if (providerName === "manual") {
+                  continue;
+                }
+
+                return yield* Effect.fail(
+                  new Error(`Provider not configured: ${providerName}`),
+                );
               }
 
               const selectedRateId = selectedRates[providerName];
-              if (!selectedRateId) {
+              if (providerName !== 'manual' && !selectedRateId) {
                 return yield* Effect.fail(
                   new Error(
                     `No shipping rate selected for provider: ${providerName}`,
                   ),
-                );
-              }
-
-              const provider = runtime.getProvider(providerName);
-              if (!provider) {
-                return yield* Effect.fail(
-                  new Error(`Provider not configured: ${providerName}`),
                 );
               }
 

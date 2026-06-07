@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { TagInput } from "@/components/ui/tag-input";
 import {
   useProducts,
   useCategories,
@@ -52,6 +53,7 @@ import {
   type FeeConfig,
   type ProductMetadata,
 } from "@/integrations/api";
+import { useAdminProduct } from "@/integrations/api/admin";
 import {
   Select,
   SelectContent,
@@ -61,6 +63,8 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+
+type ManualProviderDetails = NonNullable<NonNullable<ProductMetadata["providerDetails"]>["manual"]>;
 
 export const Route = createFileRoute(
   "/_marketplace/_authenticated/_admin/dashboard/inventory",
@@ -493,6 +497,26 @@ function MetadataEditor({
     setLocalMetadata(metadata || { fees: [] });
   }, [metadata]);
 
+  const updateManualProviderDetails = (
+    updater: (current: ManualProviderDetails) => ManualProviderDetails,
+  ) => {
+    setLocalMetadata((current) => {
+      const existingProviderDetails = current.providerDetails ?? {};
+      const existingManual = existingProviderDetails.manual ?? {
+        notificationEmails: [],
+        ownerAccountIds: [],
+      };
+
+      return {
+        ...current,
+        providerDetails: {
+          ...existingProviderDetails,
+          manual: updater(existingManual),
+        },
+      };
+    });
+  };
+
   const handleAddFee = () => {
     if (!newFee.label || !newFee.recipient || !newFee.percentage) return;
     const percentage = parseFloat(newFee.percentage);
@@ -528,6 +552,10 @@ function MetadataEditor({
   const totalPercentage = totalBps / 100;
   const referralConfig = localMetadata.affiliate?.referral;
   const referralFeeBps = referralConfig?.feeBps ?? 2000;
+  const manualProviderDetails = localMetadata.providerDetails?.manual ?? {
+    notificationEmails: [],
+    ownerAccountIds: [],
+  };
 
   return (
     <div className="space-y-4">
@@ -572,6 +600,55 @@ function MetadataEditor({
           <p className="text-xs text-foreground/50">
             Gated products stay visible but require the selected plugin to purchase.
           </p>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
+        <div className="space-y-1">
+          <Label>Manual Provider Details</Label>
+          <p className="text-xs text-foreground/50">
+            Used for order notifications and product-specific manual fulfillment settings.
+          </p>
+        </div>
+
+        <TagInput
+          label="Notification Emails"
+          placeholder="ops@nearmerch.com"
+          tags={manualProviderDetails.notificationEmails ?? []}
+          onTagsChange={(tags) =>
+            updateManualProviderDetails((current) => ({
+              ...current,
+              notificationEmails: tags,
+            }))
+          }
+        />
+
+        <TagInput
+          label="Owner Account IDs"
+          placeholder="creator.near"
+          tags={manualProviderDetails.ownerAccountIds ?? []}
+          onTagsChange={(tags) =>
+            updateManualProviderDetails((current) => ({
+              ...current,
+              ownerAccountIds: tags,
+            }))
+          }
+        />
+
+        <div className="space-y-2">
+          <Label className="text-xs text-foreground/60">Reply-To Email</Label>
+          <Input
+            type="email"
+            placeholder="support@nearmerch.com"
+            value={manualProviderDetails.replyToEmail ?? ""}
+            onChange={(e) =>
+              updateManualProviderDetails((current) => ({
+                ...current,
+                replyToEmail: e.target.value || undefined,
+              }))
+            }
+            className="h-9 text-sm bg-background/60 border border-border/60 rounded-lg"
+          />
         </div>
       </div>
 
@@ -832,8 +909,10 @@ function ExpandedProductPanel({
   isUpdatingTags: boolean;
   isUpdatingMetadata: boolean;
 }) {
+  const { data: adminProductData } = useAdminProduct(product.id);
   const selectedCollections = product.collections ?? [];
   const selectedSlugs = selectedCollections.map((collection) => collection.slug);
+  const resolvedMetadata = (adminProductData?.product?.metadata ?? product.metadata) as ProductMetadata | undefined;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
@@ -919,7 +998,7 @@ function ExpandedProductPanel({
           </p>
         </div>
         <MetadataEditor
-          metadata={product.metadata as ProductMetadata | undefined}
+          metadata={resolvedMetadata}
           onUpdate={onUpdateMetadata}
           isPending={isUpdatingMetadata}
         />
