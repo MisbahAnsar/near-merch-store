@@ -293,7 +293,7 @@ These tests are designed to run in CI/CD pipelines:
 
 2. **Clear test database**
    ```bash
-   rm -f api/api-test.db
+   psql postgres://postgres:postgres@localhost:5433/api_test -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
    ```
 
 3. **Verify environment variables**

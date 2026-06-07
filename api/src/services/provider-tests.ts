@@ -85,6 +85,7 @@ function normalizeScenario(provider: ProviderName, scenario?: ProviderTestScenar
     product: scenario?.product ?? {},
     requestOverrides: scenario?.requestOverrides ?? {},
     payloadOverrides: scenario?.payloadOverrides ?? {},
+    paymentProvider: (scenario as Record<string, unknown> | undefined)?.paymentProvider as 'stripe' | 'pingpay' | undefined,
   };
 }
 
@@ -142,7 +143,7 @@ function defaultProduct(provider: ProviderName, scenario: ProviderTestScenario):
 function getQuoteItems(product: Product, scenario: ProviderTestScenario): QuoteItemInput[] {
   const variantId = product.variants[0]?.id;
   return [{
-    productId: product.id,
+    productId: product.slug,
     ...(variantId ? { variantId } : {}),
     quantity: scenario.quantity ?? 1,
   }];
@@ -437,6 +438,7 @@ export function runProviderTestStepEffect(options: {
             shippingCost: quote.shippingCost,
             successUrl: scenario.successUrl ?? `https://nearmerch.com/admin/providers?provider=${provider}`,
             cancelUrl: scenario.cancelUrl ?? `https://nearmerch.com/admin/providers?provider=${provider}`,
+            paymentProvider: scenario.paymentProvider ?? 'pingpay',
           });
 
           const order = yield* orderStore.find(checkout.orderId);

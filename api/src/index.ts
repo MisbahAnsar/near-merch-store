@@ -73,7 +73,7 @@ export default createPlugin({
     SECRET_ACCESS_KEY: z.string().optional(),
     MANUAL_FULFILLMENT_FROM_EMAIL: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),
-    API_DATABASE_URL: z.string().default("file:./marketplace.db"),
+    API_DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5433/api"),
     API_DATABASE_AUTH_TOKEN: z.string().optional(),
   }),
 
