@@ -603,6 +603,13 @@ export const PrintfulEventConfigSchema = z.object({
 export const LuluWebhookEventTypeSchema = z.enum(['PRINT_JOB_STATUS_CHANGED']);
 
 export const ManualWebhookEventTypeSchema = z.enum(['ORDER_STATUS_CHANGED']);
+export const ManualWebhookPayloadSchema = z.object({
+  orderId: z.string().optional(),
+  externalId: z.string().optional(),
+  status: OrderStatusSchema,
+  trackingInfo: z.array(TrackingInfoSchema).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+}).passthrough();
 
 export const ProviderNameSchema = z.enum(['printful', 'lulu', 'manual']);
 export const ProviderWebhookEventTypeSchema = z.union([
@@ -624,6 +631,66 @@ export const ProviderConfigSchema = z.object({
   expiresAt: z.number().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+});
+
+export const ProviderTestStepSchema = z.enum([
+  'connection',
+  'quote',
+  'checkout',
+  'payment_webhook',
+  'provider_webhook',
+]);
+
+export const ProviderTestProductSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  price: z.number().optional(),
+  currency: z.string().optional(),
+  brand: z.string().optional(),
+  source: z.string().optional(),
+  externalProductId: z.string().optional(),
+  listed: z.boolean().optional(),
+  fulfillmentProvider: ProviderNameSchema.optional(),
+  productTypeSlug: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  options: z.array(ProductOptionSchema).optional(),
+  images: z.array(ProductImageSchema).optional(),
+  designFiles: z.array(FulfillmentFileSchema).optional(),
+  metadata: ProductMetadataSchema.optional(),
+  variants: z.array(ProductVariantInputSchema).optional(),
+}).passthrough();
+
+export const ProviderTestScenarioSchema = z.object({
+  quantity: z.number().int().positive().default(1),
+  shippingAddress: ShippingAddressSchema.optional(),
+  selectedRates: z.record(z.string(), z.string()).optional(),
+  successUrl: z.string().optional(),
+  cancelUrl: z.string().optional(),
+  product: ProviderTestProductSchema.optional(),
+  requestOverrides: z.record(z.string(), z.unknown()).optional(),
+  payloadOverrides: z.record(z.string(), z.unknown()).optional(),
+}).passthrough();
+
+export const ProviderTestStateSchema = z.object({
+  provider: ProviderNameSchema,
+  testProductId: z.string().nullable(),
+  selectedRates: z.record(z.string(), z.string()).optional(),
+  scenario: ProviderTestScenarioSchema.nullable(),
+  latestOrderId: z.string().nullable(),
+  latestStepResults: z.record(z.string(), z.unknown()).optional(),
+  latestWebhookPayloads: z.record(z.string(), z.unknown()).optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const ProviderTestRunSchema = z.object({
+  provider: ProviderNameSchema,
+  step: ProviderTestStepSchema,
+  success: z.boolean(),
+  timestamp: z.string().datetime(),
+  state: ProviderTestStateSchema.nullable(),
+  result: z.record(z.string(), z.unknown()).optional(),
+  error: z.string().optional(),
 });
 
 export const ConfigureWebhookInputSchema = z.object({
@@ -648,10 +715,16 @@ export type PrintfulWebhookEventType = z.infer<
 >;
 export type LuluWebhookEventType = z.infer<typeof LuluWebhookEventTypeSchema>;
 export type ManualWebhookEventType = z.infer<typeof ManualWebhookEventTypeSchema>;
+export type ManualWebhookPayload = z.infer<typeof ManualWebhookPayloadSchema>;
 export type PrintfulEventConfig = z.infer<typeof PrintfulEventConfigSchema>;
 export type ProviderName = z.infer<typeof ProviderNameSchema>;
 export type ProviderWebhookEventType = z.infer<typeof ProviderWebhookEventTypeSchema>;
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
+export type ProviderTestStep = z.infer<typeof ProviderTestStepSchema>;
+export type ProviderTestProduct = z.infer<typeof ProviderTestProductSchema>;
+export type ProviderTestScenario = z.infer<typeof ProviderTestScenarioSchema>;
+export type ProviderTestState = z.infer<typeof ProviderTestStateSchema>;
+export type ProviderTestRun = z.infer<typeof ProviderTestRunSchema>;
 export type ConfigureWebhookInput = z.infer<typeof ConfigureWebhookInputSchema>;
 export type ConfigureWebhookOutput = z.infer<
   typeof ConfigureWebhookOutputSchema
@@ -718,4 +791,3 @@ export const DeleteOrdersOutputSchema = z.object({
 export const GetOrderAuditLogOutputSchema = z.object({
   logs: z.array(OrderAuditLogSchema),
 });
-

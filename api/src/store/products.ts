@@ -42,6 +42,9 @@ function mergeProductMetadata(
 export class ProductStore extends Context.Tag("ProductStore")<
   ProductStore,
   {
+    readonly findById: (id: string) => Effect.Effect<Product | null, Error>;
+    readonly findBySource: (source: string) => Effect.Effect<Product | null, Error>;
+    readonly findBySlug: (slug: string) => Effect.Effect<Product | null, Error>;
     readonly find: (identifier: string) => Effect.Effect<Product | null, Error>;
     readonly findByPublicKey: (
       publicKey: string,
@@ -263,6 +266,60 @@ export const ProductStoreLive = Layer.effect(
     };
 
     return {
+      findById: (id) =>
+        Effect.tryPromise({
+          try: async () => {
+            const results = await db
+              .select()
+              .from(schema.products)
+              .where(eq(schema.products.id, id))
+              .limit(1);
+
+            if (results.length === 0) {
+              return null;
+            }
+
+            return await rowToProduct(results[0]!);
+          },
+          catch: (error) => new Error(`Failed to find product by id: ${error}`),
+        }),
+
+      findBySource: (source) =>
+        Effect.tryPromise({
+          try: async () => {
+            const results = await db
+              .select()
+              .from(schema.products)
+              .where(eq(schema.products.source, source))
+              .limit(1);
+
+            if (results.length === 0) {
+              return null;
+            }
+
+            return await rowToProduct(results[0]!);
+          },
+          catch: (error) => new Error(`Failed to find product by source: ${error}`),
+        }),
+
+      findBySlug: (slug) =>
+        Effect.tryPromise({
+          try: async () => {
+            const results = await db
+              .select()
+              .from(schema.products)
+              .where(eq(schema.products.slug, slug))
+              .limit(1);
+
+            if (results.length === 0) {
+              return null;
+            }
+
+            return await rowToProduct(results[0]!);
+          },
+          catch: (error) => new Error(`Failed to find product by slug: ${error}`),
+        }),
+
       find: (identifier) =>
         Effect.tryPromise({
           try: async () => {

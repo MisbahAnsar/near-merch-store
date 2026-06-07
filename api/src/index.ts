@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { createPlugin } from 'every-plugin';
-import { Effect, Layer, Schedule, Cause, Exit } from 'every-plugin/effect';
+import { Effect, Layer, Cause, Exit } from 'every-plugin/effect';
 import { ManagedRuntime } from 'every-plugin/effect';
 import { ORPCError } from 'every-plugin/orpc';
 import { z } from 'every-plugin/zod';
@@ -8,7 +8,7 @@ import { contract } from './contract';
 import { cleanupAbandonedDrafts } from './jobs/cleanup-drafts';
 import { retryPendingConfirmations } from './jobs/retry-confirmations';
 import { createMarketplaceRuntime } from './runtime';
-import { ReturnAddressSchema, type ConfigureWebhookOutput, type OrderStatus, type PrintfulWebhookEventType, type ProductMetadata, type ProviderWebhookEventType, type TrackingInfo, type Product } from './schema';
+import { ReturnAddressSchema, ManualWebhookPayloadSchema, type ConfigureWebhookOutput, type PrintfulWebhookEventType, type ProductMetadata, type ProviderWebhookEventType, type Product } from './schema';
 
 function sanitizeProductForPublic<T extends Product>(product: T): T {
   if (product.metadata?.providerDetails?.manual) {
@@ -29,12 +29,17 @@ import { ProductBuilderService, ProductBuilderServiceLive } from './services/pro
 import { AssetService, AssetServiceLive } from './services/assets';
 import { StripeService } from './services/stripe';
 import { NewsletterService, NewsletterServiceLive } from './services/newsletter';
-import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive } from './store';
+import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive } from './store';
 import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
-import { computePrintfulUpdate, parsePrintfulWebhook, verifyPrintfulWebhookSignature } from './services/fulfillment/printful/webhook';
+import { parsePrintfulWebhook, verifyPrintfulWebhookSignature } from './services/fulfillment/printful/webhook';
+import { verifyPingPayWebhookSignature } from './services/payment/pingpay/service';
 import { handlePingPayWebhookEffect } from './services/payment/pingpay/webhook';
-import { handleOrderPaidEffect } from './services/order-paid';
+import { processPaymentSuccessEffect } from './services/payment/payment-success';
+import { processManualWebhookEffect } from './services/webhooks/manual';
+import { logWebhookProcessingError, readWebhookBody } from './services/webhooks/common/route';
+import { runProviderTestStepEffect, saveProviderTestScenarioEffect } from './services/provider-tests';
+import { findOrderByFulfillmentRefEffect, processLuluWebhookEffect, processPrintfulWebhookEffect } from './services/fulfillment/webhook';
 export * from './schema';
 
 
@@ -174,6 +179,7 @@ export default createPlugin({
           CollectionStoreLive,
           OrderStoreLive,
           ProviderConfigStoreLive,
+          ProviderTestStateStoreLive,
           ProductTypeStoreLive,
           NewsletterStoreLive,
           AssetStoreLive,
@@ -1222,38 +1228,13 @@ export default createPlugin({
             return { received: true };
           }
 
-          await managedRuntime.runPromise(
-            Effect.gen(function* () {
-              const store = yield* OrderStore;
-              yield* store.updateStatus(
-                orderId,
-                "paid",
-                "service:stripe",
-                "checkout.session.completed",
-                { sessionId: session.id },
-              );
-            }),
-          );
-
           try {
             const paidResult = await managedRuntime.runPromise(
-              handleOrderPaidEffect({ runtime, order }),
-            );
-
-            const finalStatus: OrderStatus = paidResult.allProviderConfirmationsSucceeded
-              ? "processing"
-              : "paid_pending_fulfillment";
-
-            await managedRuntime.runPromise(
-              Effect.gen(function* () {
-                const store = yield* OrderStore;
-                yield* store.updateStatus(
-                  orderId,
-                  finalStatus,
-                  "service:stripe",
-                  `fulfillment:${paidResult.allProviderConfirmationsSucceeded ? "confirmed" : "partial"}`,
-                  { confirmationResults: paidResult.confirmationResults, allSuccess: paidResult.allProviderConfirmationsSucceeded },
-                );
+              processPaymentSuccessEffect({
+                runtime,
+                order,
+                actor: 'service:stripe',
+                metadata: { sessionId: session.id, eventType: 'checkout.session.completed' },
               }),
             );
           } catch (error) {
@@ -1282,8 +1263,7 @@ export default createPlugin({
         async ({ input, context }) => {
           const signature =
             context.reqHeaders?.get("x-pf-webhook-signature") || "";
-          const rawBody =
-            (await context.getRawBody?.()) ?? JSON.stringify(input as unknown);
+          const rawBody = await readWebhookBody({ input, getRawBody: context.getRawBody });
 
           try {
             // Secret source of truth: DB (configured via admin UI). Env is a fallback.
@@ -1341,99 +1321,23 @@ export default createPlugin({
             );
 
             const order = await managedRuntime.runPromise(
-              Effect.gen(function* () {
-                const store = yield* OrderStore;
-                let order = yield* store.findByFulfillmentRef(externalId);
-                if (!order) {
-                  order = yield* store.find(externalId);
-                }
-                return order;
-              }),
+              findOrderByFulfillmentRefEffect(externalId),
             );
 
             if (!order) {
               return { received: true };
             }
 
-            const { newStatus, newTracking, shouldRetryConfirmation } = computePrintfulUpdate({
-              eventType,
-              data,
-              currentStatus: order.status,
-            });
-
-            if (newStatus && order) {
-              const statusToUpdate = newStatus;
-              await managedRuntime.runPromise(
-                Effect.gen(function* () {
-                  const store = yield* OrderStore;
-                  yield* store.updateStatus(
-                    order.id,
-                    statusToUpdate,
-                    "service:printful",
-                    eventType,
-                    { eventType, externalId, data },
-                  );
-                }),
-              );
-            }
-
-            if (shouldRetryConfirmation && order) {
-              const draftOrderIds = order.draftOrderIds || {};
-              if (Object.keys(draftOrderIds).length > 0) {
-                console.log('[Printful Webhook] Retrying draft order confirmation', { orderId: order.id, draftOrderIds });
-                const confirmationResults: Record<string, { success: boolean; error?: string }> = {};
-                for (const [providerName, draftId] of Object.entries(draftOrderIds)) {
-                  if (providerName === 'manual') continue;
-                  const provider = runtime.getProvider(providerName);
-                  if (!provider) {
-                    confirmationResults[providerName] = { success: false, error: 'Provider not configured' };
-                    continue;
-                  }
-                  try {
-                    await managedRuntime.runPromise(
-                      Effect.tryPromise({
-                        try: () => provider.client.confirmOrder({ id: draftId as string }),
-                        catch: (e) => new Error(`Failed to confirm: ${e instanceof Error ? e.message : String(e)}`),
-                      }).pipe(Effect.retry({ times: 3, schedule: Schedule.exponential('100 millis') })),
-                    );
-                    confirmationResults[providerName] = { success: true };
-                  } catch (error) {
-                    const errorMsg = error instanceof Error ? error.message : String(error);
-                    console.warn('[Printful Webhook] Confirmation retry failed', { providerName, draftId, error: errorMsg });
-                    confirmationResults[providerName] = { success: false, error: errorMsg };
-                  }
-                }
-                const allSuccess = Object.values(confirmationResults).every((r) => r.success);
-                const finalStatus = allSuccess ? 'processing' : 'paid_pending_fulfillment';
-                await managedRuntime.runPromise(
-                  Effect.gen(function* () {
-                    const store = yield* OrderStore;
-                    yield* store.updateStatus(
-                      order.id,
-                      finalStatus,
-                      'service:printful',
-                      `fulfillment:retry_${allSuccess ? 'confirmed' : 'partial'}`,
-                      { confirmationResults, allSuccess },
-                    );
-                  }),
-                );
-              }
-            }
-
-            if (newTracking && order) {
-              const trackingToUpdate = newTracking;
-              await managedRuntime.runPromise(
-                Effect.gen(function* () {
-                  const store = yield* OrderStore;
-                  yield* store.updateTracking(
-                    order.id,
-                    trackingToUpdate,
-                    "service:printful",
-                    { eventType, externalId },
-                  );
-                }),
-              );
-            }
+            await managedRuntime.runPromise(
+              processPrintfulWebhookEffect({
+                runtime,
+                order,
+                eventType,
+                data,
+                actor: 'service:printful',
+                metadata: { eventType, externalId, data },
+              }),
+            );
           } catch (error) {
             if (error instanceof ORPCError) {
               console.error(`[Printful Webhook] ORPC error:`, error);
@@ -1441,7 +1345,7 @@ export default createPlugin({
             }
 
             // Log other errors but don't throw - return 200 to avoid webhook retries
-            console.error(`[Printful Webhook] Processing error:`, error);
+            logWebhookProcessingError({ provider: 'Printful', error });
           }
 
           return { received: true };
@@ -1450,7 +1354,7 @@ export default createPlugin({
 
       luluWebhook: builder.luluWebhook.handler(async ({ input, context }) => {
         const signature = context.reqHeaders?.get('Lulu-HMAC-SHA256') || '';
-        const rawBody = (await context.getRawBody?.()) ?? JSON.stringify(input as unknown);
+        const rawBody = await readWebhookBody({ input, getRawBody: context.getRawBody });
         
         let eventType: string | undefined;
         let externalId: string | undefined;
@@ -1490,101 +1394,75 @@ export default createPlugin({
 
           // Find the order by fulfillment reference
           const order = await managedRuntime.runPromise(
-            Effect.gen(function* () {
-              const store = yield* OrderStore;
-              let order = yield* store.findByFulfillmentRef(externalId!);
-              if (!order) {
-                order = yield* store.find(externalId!);
-              }
-              return order;
-            })
+            findOrderByFulfillmentRefEffect(externalId!)
           );
 
           if (!order) {
             return { received: true };
           }
 
-          // Map Lulu status to internal status
-          let newStatus: OrderStatus | undefined = undefined;
-          let newTracking: TrackingInfo[] | undefined = undefined;
-          let errorDetails: { code?: string; message?: string }[] | undefined = undefined;
+          await managedRuntime.runPromise(
+            processLuluWebhookEffect({
+              order,
+              eventType,
+              data,
+              actor: 'service:lulu',
+              luluService,
+              metadata: { eventType, externalId, data },
+            })
+          );
+        } catch (error) {
+          if (error instanceof ORPCError) {
+            throw error;
+          }
 
-          switch (eventType) {
-            case 'PRINT_JOB_STATUS_CHANGED': {
-              const luluStatus = typeof data.status === 'string' ? data.status : data.status?.name || 'CREATED';
-              newStatus = luluService.mapStatus(luluStatus) as OrderStatus;
-              
-              // Handle error/rejected statuses with detailed logging
-              if (luluStatus === 'REJECTED' || luluStatus === 'ERROR') {
-                const errors = data.errors || [];
-                errorDetails = errors.map(e => ({
-                  code: e.code,
-                  message: e.message,
-                }));
-                
-                console.error(`[Lulu Webhook] Print job ${luluStatus} for order ${order.id}:`, {
-                  externalId,
-                  errors: errorDetails,
-                  rawData: data,
-                });
+          // Log error but return 200 to prevent webhook retries
+          logWebhookProcessingError({ provider: 'Lulu', error, details: { eventType, externalId } });
+        }
+
+        return { received: true };
+      }),
+
+      manualWebhook: builder.manualWebhook.handler(async ({ input }) => {
+        const parsed = ManualWebhookPayloadSchema.parse(input);
+
+        const order = await managedRuntime.runPromise(
+          Effect.gen(function* () {
+            const store = yield* OrderStore;
+            if (parsed.orderId) {
+              const byId = yield* store.find(parsed.orderId);
+              if (byId) {
+                return byId;
               }
-              
-              // Check for tracking information in line items
-              if (data.line_items && data.line_items.length > 0) {
-                const shippedItems = data.line_items.filter((item) => item.tracking_id);
-                if (shippedItems.length > 0) {
-                  newTracking = shippedItems.map((item) => ({
-                    trackingCode: item.tracking_id || '',
-                    trackingUrl: item.tracking_urls?.[0] || '',
-                    shipmentMethodName: 'Standard',
-                    fulfillmentCountry: data.shipping_address?.country_code,
-                  }));
-                  newStatus = 'shipped';
-                }
-              }
-              break;
             }
 
-            default:
-              break;
-          }
+            if (parsed.externalId) {
+              const byRef = yield* store.findByFulfillmentRef(parsed.externalId);
+              if (byRef) {
+                return byRef;
+              }
+            }
 
-          if (newStatus) {
-            await managedRuntime.runPromise(
-              Effect.gen(function* () {
-                const store = yield* OrderStore;
-                yield* store.updateStatus(
-                  order.id,
-                  newStatus!,
-                  'service:lulu',
-                  eventType,
-                  { eventType, externalId, data, errorDetails }
-                );
-              })
-            );
-          }
+            return null;
+          }),
+        );
 
-          if (newTracking) {
-            await managedRuntime.runPromise(
-              Effect.gen(function* () {
-                const store = yield* OrderStore;
-                yield* store.updateTracking(
-                  order.id,
-                  newTracking!,
-                  'service:lulu',
-                  { eventType, externalId }
-                );
-              })
-            );
-          }
+        if (!order) {
+          return { received: true };
+        }
+
+        try {
+          await managedRuntime.runPromise(
+            processManualWebhookEffect({
+              order,
+              actor: 'service:manual',
+              status: parsed.status,
+              trackingInfo: parsed.trackingInfo,
+              metadata: { eventType: 'ORDER_STATUS_CHANGED', ...(parsed.metadata ?? {}) },
+            }),
+          );
         } catch (error) {
-          // Log error but return 200 to prevent webhook retries
-          console.error('[Lulu Webhook] Processing error:', {
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            eventType,
-            externalId,
-          });
+          logWebhookProcessingError({ provider: 'Manual', error, details: { orderId: order.id } });
         }
 
         return { received: true };
@@ -1600,8 +1478,21 @@ export default createPlugin({
 
         const signature = context.reqHeaders?.get("x-ping-signature") || "";
         const timestamp = context.reqHeaders?.get("x-ping-timestamp") || "";
-        const body =
-          (await context.getRawBody?.()) ?? JSON.stringify(input as unknown);
+        const body = await readWebhookBody({ input, getRawBody: context.getRawBody });
+
+        try {
+          await managedRuntime.runPromise(
+            verifyPingPayWebhookSignature(body, timestamp, signature, secrets.PING_WEBHOOK_SECRET),
+          );
+        } catch (error) {
+          if (error instanceof ORPCError) {
+            throw error;
+          }
+
+          throw new ORPCError('UNAUTHORIZED', {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
 
         try {
           await managedRuntime.runPromise(
@@ -1617,13 +1508,12 @@ export default createPlugin({
           console.log("[PingPay Webhook] Webhook processed successfully");
           return { received: true };
         } catch (error) {
-          console.error("[PingPay Webhook] Processing error:", {
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            signature: signature.substring(0, 20) + "...",
-            timestamp,
-          });
-          throw error;
+          if (error instanceof ORPCError) {
+            throw error;
+          }
+
+          logWebhookProcessingError({ provider: 'PingPay', error, details: { signature: signature.substring(0, 20) + "...", timestamp } });
+          return { received: true };
         }
       }),
 
@@ -1960,6 +1850,80 @@ export default createPlugin({
               timestamp: new Date().toISOString(),
             };
           }
+        }),
+
+      getProviderTestState: builder.getProviderTestState
+        .use(requireAdmin)
+        .handler(async ({ input }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const store = yield* ProviderTestStateStore;
+              return yield* store.getState(input.provider);
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            throw new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return { state: exit.value };
+        }),
+
+      saveProviderTestScenario: builder.saveProviderTestScenario
+        .use(requireAdmin)
+        .handler(async ({ input }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              return yield* saveProviderTestScenarioEffect({
+                provider: input.provider,
+                scenario: input.scenario,
+              });
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            throw new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return { state: exit.value };
+        }),
+
+      runProviderTestStep: builder.runProviderTestStep
+        .use(requireAdmin)
+        .handler(async ({ input }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              return yield* runProviderTestStepEffect({
+                runtime,
+                provider: input.provider,
+                step: input.step,
+              });
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            throw new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
         }),
 
       getProviderFieldConfigs: builder.getProviderFieldConfigs

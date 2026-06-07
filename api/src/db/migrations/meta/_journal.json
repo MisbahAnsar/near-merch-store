@@ -99,6 +99,13 @@
       "when": 1778024400000,
       "tag": "0013_repair_assets_storage_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1780867642672,
+      "tag": "0014_fine_kate_bishop",
+      "breakpoints": true
     }
   ]
 }

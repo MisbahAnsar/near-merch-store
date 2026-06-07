@@ -22,6 +22,10 @@ import {
   ProductSchema,
   ProductTypeSchema,
   ProviderConfigSchema,
+  ProviderTestRunSchema,
+  ProviderTestScenarioSchema,
+  ProviderTestStateSchema,
+  ProviderTestStepSchema,
   QuoteItemInputSchema,
   QuoteOutputSchema,
   ShippingAddressSchema,
@@ -434,6 +438,17 @@ export const contract = oc.router({
     .input(z.unknown())
     .output(WebhookResponseSchema),
 
+  manualWebhook: oc
+    .route({
+      method: 'POST',
+      path: '/webhooks/manual',
+      summary: 'Manual webhook',
+      description: 'Handles manual fulfillment status update events.',
+      tags: ['Webhooks'],
+    })
+    .input(z.unknown())
+    .output(WebhookResponseSchema),
+
   pingWebhook: oc
     .route({
       method: "POST",
@@ -597,6 +612,42 @@ export const contract = oc.router({
       timestamp: z.string().datetime(),
     }))
     .errors({ BAD_REQUEST, UNAUTHORIZED }),
+
+  getProviderTestState: oc
+    .route({
+      method: "GET",
+      path: "/admin/providers/{provider}/test-state",
+      summary: "Get provider test state",
+      description: "Returns the latest provider test scenario and step results.",
+      tags: ["Admin", "Providers"],
+    })
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']) }))
+    .output(z.object({ state: ProviderTestStateSchema.nullable() }))
+    .errors({ UNAUTHORIZED }),
+
+  saveProviderTestScenario: oc
+    .route({
+      method: "PUT",
+      path: "/admin/providers/{provider}/test-state",
+      summary: "Save provider test scenario",
+      description: "Persists a provider test scenario and its hidden test product.",
+      tags: ["Admin", "Providers"],
+    })
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']), scenario: ProviderTestScenarioSchema }))
+    .output(z.object({ state: ProviderTestStateSchema }))
+    .errors({ UNAUTHORIZED }),
+
+  runProviderTestStep: oc
+    .route({
+      method: "POST",
+      path: "/admin/providers/{provider}/test-run",
+      summary: "Run provider test step",
+      description: "Executes a single provider test step and persists the result.",
+      tags: ["Admin", "Providers"],
+    })
+    .input(z.object({ provider: z.enum(['printful', 'lulu', 'manual']), step: ProviderTestStepSchema }))
+    .output(ProviderTestRunSchema)
+    .errors({ UNAUTHORIZED }),
 
   getProviderFieldConfigs: oc
     .route({

@@ -23,7 +23,7 @@ export interface PingSessionInfo {
   metadata: Record<string, unknown>;
 }
 
-const verifySignature = (
+export const verifyPingPayWebhookSignature = (
   payload: string,
   timestamp: string,
   signature: string,
@@ -110,7 +110,7 @@ export const PingPayServiceLive = (config: PingPayConfig) =>
 
       verifyWebhook: (body, signature, timestamp) =>
         Effect.gen(function* () {
-          yield* verifySignature(body, timestamp, signature, config.webhookSecret);
+          yield* verifyPingPayWebhookSignature(body, timestamp, signature, config.webhookSecret);
 
           let parsed: unknown;
           try {

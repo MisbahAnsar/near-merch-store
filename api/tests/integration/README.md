@@ -87,7 +87,7 @@ bun test --watch api/tests/integration
 ## Test Setup
 
 All tests use:
-- **In-memory SQLite database** for isolation
+- **Local PostgreSQL database** for isolation
 - **Vitest** as the test runner
 - **Database migrations** run before each test suite
 - **Cleanup** after each test to ensure independence
@@ -100,11 +100,12 @@ The tests use a test configuration defined in `api/tests/setup.ts`:
 const TEST_CONFIG = {
   variables: pluginDevConfig.config.variables,
   secrets: {
-    API_DATABASE_URL: 'file:./api-test.db',
-    API_DATABASE_AUTH_TOKEN: undefined,
+    API_DATABASE_URL: 'postgres://.../api_test',
   },
 };
 ```
+
+If `TEST_DATABASE_URL` is unset, the test setup derives a local test URL from `API_DATABASE_URL` and creates the `api_test` database if it does not already exist.
 
 ---
 

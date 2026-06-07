@@ -39,6 +39,11 @@ export {
   ProviderConfigStoreLive,
 } from "./providers";
 
+export {
+  ProviderTestStateStore,
+  ProviderTestStateStoreLive,
+} from "./provider-tests";
+
 export type {
   ProductCriteria,
   ProductWithImages,

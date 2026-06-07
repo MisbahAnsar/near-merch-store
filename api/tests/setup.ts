@@ -1,8 +1,9 @@
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import Plugin from '@/index';
-import { createDatabase, type DatabaseType } from '@/db';
+import type { DatabaseType } from '@/db';
 import * as schema from '@/db/schema';
+import { config as loadEnv } from 'dotenv';
 import pluginDevConfig from '../plugin.dev';
 import { createPluginRuntime } from 'every-plugin';
 import { dirname, join } from 'node:path';
@@ -12,7 +13,28 @@ import pg from 'postgres';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export const TEST_DB_URL = process.env.TEST_DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/api_test';
+loadEnv({ path: join(__dirname, '../../.env') });
+
+function resolveTestDatabaseUrl() {
+  if (process.env.TEST_DATABASE_URL) {
+    return process.env.TEST_DATABASE_URL;
+  }
+
+  const apiDatabaseUrl = process.env.API_DATABASE_URL;
+  if (apiDatabaseUrl?.startsWith('postgres://') || apiDatabaseUrl?.startsWith('postgresql://')) {
+    try {
+      const derivedUrl = new URL(apiDatabaseUrl);
+      derivedUrl.pathname = '/api_test';
+      return derivedUrl.toString();
+    } catch {
+      // Fall back to the repo default below.
+    }
+  }
+
+  return 'postgres://postgres:postgres@localhost:5433/api_test';
+}
+
+export const TEST_DB_URL = resolveTestDatabaseUrl();
 
 if (
   !TEST_DB_URL.includes('localhost') &&
@@ -42,6 +64,41 @@ let _runtime: ReturnType<typeof createPluginRuntime> | null = null;
 let _testDb: DatabaseType | null = null;
 let _postgresClient: ReturnType<typeof pg> | null = null;
 let _migrationsRun = false;
+
+async function ensureTestDatabaseExists(databaseUrl: string) {
+  const url = new URL(databaseUrl);
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\//, ''));
+
+  if (!databaseName) {
+    throw new Error(`[Test Setup] Invalid database URL: ${databaseUrl}`);
+  }
+
+  const adminUrl = new URL(databaseUrl);
+  adminUrl.pathname = '/postgres';
+  adminUrl.search = '';
+
+  const adminClient = pg(adminUrl.toString(), {
+    max: 1,
+    idle_timeout: 10 * 1000,
+    connect_timeout: 10 * 1000,
+  });
+
+  try {
+    const existing = await adminClient`
+      SELECT 1
+      FROM pg_database
+      WHERE datname = ${databaseName}
+    `;
+
+    if (existing.length === 0) {
+      const escapedName = databaseName.replace(/"/g, '""');
+      await adminClient.unsafe(`CREATE DATABASE "${escapedName}"`);
+      console.log(`[Test Setup] Created missing test database: ${databaseName}`);
+    }
+  } finally {
+    await adminClient.end();
+  }
+}
 
 export function getRuntime() {
   if (!_runtime) {
@@ -81,6 +138,8 @@ export async function runMigrations() {
   if (_migrationsRun) {
     return;
   }
+
+  await ensureTestDatabaseExists(TEST_DB_URL);
 
   const db = getTestDb();
   const migrationsFolder = join(__dirname, '../src/db/migrations');
