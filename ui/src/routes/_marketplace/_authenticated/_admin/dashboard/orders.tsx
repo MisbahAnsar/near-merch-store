@@ -894,6 +894,7 @@ function AdminOrdersPage() {
           onClose={() => {
             setIsDetailsModalOpen(false);
             setDetailsOrder(null);
+            autoOpenedFromLinkRef.current = false;
           }}
         />
       )}

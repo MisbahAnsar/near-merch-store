@@ -241,7 +241,7 @@ function ProviderTestPanel({
         <button type="button" onClick={() => run("quote")} disabled={runStep.isPending} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Quote</button>
         <button type="button" onClick={() => run("checkout")} disabled={runStep.isPending || !canRunCheckout} title={!canRunCheckout ? "Run quote first so selected rates are available" : undefined} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Checkout</button>
         <button type="button" onClick={() => run("payment_webhook")} disabled={runStep.isPending || !canRunPaymentWebhook} title={!canRunPaymentWebhook ? "Run checkout first" : undefined} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Paid Webhook</button>
-        <button type="button" onClick={() => run("provider_webhook")} disabled={runStep.isPending || !canRunProviderWebhook} title={!canRunProviderWebhook ? "Run checkout first" : undefined} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Provider Webhook</button>
+        <button type="button" onClick={() => run("provider_webhook")} disabled={runStep.isPending || !canRunProviderWebhook} title={!canRunProviderWebhook ? "Run payment webhook first" : undefined} className="px-3 py-2 rounded-lg border border-border/60 text-sm hover:bg-background/60 disabled:opacity-50">Provider Webhook</button>
       </div>
     </div>
   );
