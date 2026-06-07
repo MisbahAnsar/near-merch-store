@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ColumnDef, RowSelectionState } from "@tanstack/react-table";
 import { ExternalLink, RefreshCw, Search, ShoppingBag, ChevronDown, ChevronUp, CreditCard, Trash2, History, AlertTriangle, Loader2 } from "lucide-react";
@@ -30,7 +30,20 @@ import {
 } from "@/components/ui/select";
 
 export const Route = createFileRoute("/_marketplace/_authenticated/_admin/dashboard/orders")({
-  loader: () => apiClient.getAllOrders({ limit: 100, offset: 0 }),
+  validateSearch: (search: Record<string, unknown>) => ({
+    orderId: typeof search.orderId === "string" ? search.orderId : undefined,
+    search: typeof search.search === "string" ? search.search : undefined,
+  }),
+  loaderDeps: ({ search }) => ({
+    orderId: search.orderId,
+    search: search.search,
+  }),
+  loader: ({ deps }) =>
+    apiClient.getAllOrders({
+      limit: 100,
+      offset: 0,
+      search: deps.orderId ?? deps.search,
+    }),
   errorComponent: OrdersError,
   component: AdminOrdersPage,
 });
@@ -134,6 +147,108 @@ function PaymentDetailsView({ paymentDetails }: { paymentDetails: Record<string,
         </div>
       )}
     </div>
+  );
+}
+
+function OrderDetailsModal({ order, isOpen, onClose }: { order: Order; isOpen: boolean; onClose: () => void }) {
+  const shippingAddress = order.shippingAddress;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto rounded-2xl bg-background border border-border/60">
+        <DialogHeader>
+          <DialogTitle>Order Details - {order.id.substring(0, 8)}...</DialogTitle>
+          <DialogDescription>
+            Shipping, items, and fulfillment details for this order
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 lg:grid-cols-2 py-4">
+          <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
+            <div>
+              <p className="text-sm font-semibold">Shipping Address</p>
+              {shippingAddress ? (
+                <div className="mt-2 space-y-0.5 text-sm text-foreground/80">
+                  <p>{shippingAddress.firstName} {shippingAddress.lastName}</p>
+                  {shippingAddress.companyName && <p>{shippingAddress.companyName}</p>}
+                  <p>{shippingAddress.addressLine1}</p>
+                  {shippingAddress.addressLine2 && <p>{shippingAddress.addressLine2}</p>}
+                  <p>{shippingAddress.city}{shippingAddress.state ? `, ${shippingAddress.state}` : ""} {shippingAddress.postCode}</p>
+                  <p>{shippingAddress.country}</p>
+                  <p>{shippingAddress.email}</p>
+                  {shippingAddress.phone && <p>{shippingAddress.phone}</p>}
+                  {shippingAddress.taxId && <p>Tax ID: {shippingAddress.taxId}</p>}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-foreground/60">No shipping address</p>
+              )}
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold">Order Summary</p>
+              <div className="mt-2 space-y-1 text-sm text-foreground/80">
+                <p>Status: {getAdminStatusLabel(order.status)}</p>
+                <p>Total: ${order.totalAmount.toFixed(2)} {order.currency}</p>
+                {order.checkoutProvider && <p>Checkout: {order.checkoutProvider}</p>}
+                {order.shippingMethod && <p>Shipping method: {order.shippingMethod}</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
+            <p className="text-sm font-semibold">Items</p>
+            <div className="space-y-2">
+              {order.items.map((item) => (
+                <div key={item.id} className="rounded-lg border border-border/60 bg-background/60 p-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{item.productName}</p>
+                      {item.variantName && <p className="text-xs text-foreground/60">{item.variantName}</p>}
+                      {item.attributes && item.attributes.length > 0 && (
+                        <p className="text-xs text-foreground/60 mt-1">
+                          {item.attributes.map((attr) => `${attr.name}: ${attr.value}`).join(" · ")}
+                        </p>
+                      )}
+                      {item.fulfillmentProvider && (
+                        <p className="text-xs text-foreground/50 mt-1">Provider: {item.fulfillmentProvider}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-medium">x{item.quantity}</p>
+                      <p className="text-xs text-foreground/60">${item.unitPrice.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {order.paymentDetails && Object.keys(order.paymentDetails).length > 0 && (
+          <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
+            <p className="text-sm font-semibold">Payment Details</p>
+            <PaymentDetailsView paymentDetails={order.paymentDetails} />
+          </div>
+        )}
+
+        {order.trackingInfo && order.trackingInfo.length > 0 && (
+          <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
+            <p className="text-sm font-semibold">Tracking</p>
+            <div className="space-y-2">
+              {order.trackingInfo.map((tracking) => (
+                <div key={tracking.trackingCode} className="rounded-lg border border-border/60 bg-background/60 p-3 text-sm">
+                  <p className="font-medium">{tracking.shipmentMethodName}</p>
+                  <p className="text-xs text-foreground/60">{tracking.trackingCode}</p>
+                  <a href={tracking.trackingUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#00EC97] hover:underline">
+                    View tracking
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -271,17 +386,21 @@ function DeleteConfirmationModal({
 function AdminOrdersPage() {
   const router = useRouter();
   const loaderData = Route.useLoaderData();
+  const routeSearch = Route.useSearch();
   const updateOrderStatus = useUpdateOrderStatus();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(routeSearch.orderId ?? routeSearch.search ?? "");
   const [filterManual, setFilterManual] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedOrdersForDelete, setSelectedOrdersForDelete] = useState<Order[]>([]);
+  const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [auditLogOrder, setAuditLogOrder] = useState<Order | null>(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [statusChangeDraft, setStatusChangeDraft] = useState<{ order: Order; status: OrderStatus } | null>(null);
   const [statusReason, setStatusReason] = useState("");
   const [savingStatusOrderId, setSavingStatusOrderId] = useState<string | null>(null);
+  const autoOpenedFromLinkRef = useRef(false);
 
   if (!loaderData) {
     return (
@@ -321,6 +440,19 @@ function AdminOrdersPage() {
         order.userId.toLowerCase().includes(term)
     );
   }, [orders, search, filterManual]);
+
+  useEffect(() => {
+    if (!routeSearch.orderId || autoOpenedFromLinkRef.current) {
+      return;
+    }
+
+    const linkedOrder = filteredOrders.find((order) => order.id === routeSearch.orderId);
+    if (linkedOrder) {
+      setDetailsOrder(linkedOrder);
+      setIsDetailsModalOpen(true);
+      autoOpenedFromLinkRef.current = true;
+    }
+  }, [filteredOrders, routeSearch.orderId]);
 
   const selectedOrders = useMemo(() => {
     const selectedIndices = Object.keys(rowSelection).filter(key => rowSelection[key]);
@@ -363,6 +495,11 @@ function AdminOrdersPage() {
   const handleViewAuditLog = (order: Order) => {
     setAuditLogOrder(order);
     setIsAuditModalOpen(true);
+  };
+
+  const handleViewDetails = (order: Order) => {
+    setDetailsOrder(order);
+    setIsDetailsModalOpen(true);
   };
 
   const getErrorMessage = (error: unknown) => {
@@ -512,6 +649,13 @@ function AdminOrdersPage() {
 
           return (
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleViewDetails(order)}
+                className="px-3 py-1.5 rounded-lg bg-background/60 backdrop-blur-sm border border-border/60 text-foreground flex items-center justify-center text-xs font-semibold hover:bg-[#00EC97] hover:border-[#00EC97] hover:text-black transition-colors"
+              >
+                Details
+              </button>
               {hasPaymentDetails && (
                 <Dialog>
                   <DialogTrigger asChild>
@@ -678,6 +822,13 @@ function AdminOrdersPage() {
                   </div>
 
                   <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleViewDetails(order)}
+                      className="flex-1 px-3 py-2 rounded-lg bg-background/60 backdrop-blur-sm border border-border/60 text-foreground flex items-center justify-center text-xs font-semibold hover:bg-[#00EC97] hover:border-[#00EC97] hover:text-black transition-colors"
+                    >
+                      Details
+                    </button>
                     {hasPaymentDetails && (
                       <Dialog>
                         <DialogTrigger asChild>
@@ -733,6 +884,17 @@ function AdminOrdersPage() {
           isOpen={isDeleteModalOpen}
           onClose={() => setIsDeleteModalOpen(false)}
           onConfirm={handleConfirmDelete}
+        />
+      )}
+
+      {detailsOrder && (
+        <OrderDetailsModal
+          order={detailsOrder}
+          isOpen={isDetailsModalOpen}
+          onClose={() => {
+            setIsDetailsModalOpen(false);
+            setDetailsOrder(null);
+          }}
         />
       )}
 

@@ -87,6 +87,10 @@ export const initializePlugins = Effect.gen(function* () {
       const secrets = pluginConfig.secrets ? secretsFromEnv(pluginConfig.secrets) : {};
       const variables = stripEmptyStrings(pluginConfig.variables ?? {});
 
+      if (pluginName === 'api') {
+        variables.hostUrl = config.hostUrl;
+      }
+
       const api = await runtime.usePlugin(pluginName, {
         // @ts-expect-error no plugin types loaded
         variables,

@@ -14,6 +14,31 @@ import type {
 import { Database } from "./database";
 import type { PrintfulProviderConfig } from '../services/fulfillment/printful/client';
 
+function mergeProviderDetails(
+  existing: ProductMetadata["providerDetails"] | undefined,
+  incoming: ProductMetadata["providerDetails"] | undefined,
+) {
+  if (!existing && !incoming) return undefined;
+  return {
+    ...(existing ?? {}),
+    ...(incoming ?? {}),
+  };
+}
+
+function mergeProductMetadata(
+  existing: ProductMetadata | null | undefined,
+  incoming: ProductMetadata | undefined,
+): ProductMetadata {
+  return {
+    creatorAccountId: incoming?.creatorAccountId ?? existing?.creatorAccountId,
+    fees: incoming?.fees ?? existing?.fees ?? [],
+    providerDetails: mergeProviderDetails(existing?.providerDetails, incoming?.providerDetails),
+    downloads: incoming?.downloads ?? existing?.downloads,
+    purchaseGate: incoming?.purchaseGate ?? existing?.purchaseGate,
+    affiliate: incoming?.affiliate ?? existing?.affiliate,
+  };
+}
+
 export class ProductStore extends Context.Tag("ProductStore")<
   ProductStore,
   {
@@ -493,16 +518,7 @@ export const ProductStoreLive = Layer.effect(
 
             if (existingProduct) {
               const existingMetadata = existingProduct.metadata as ProductMetadata | null;
-              const newProviderDetails = product.metadata?.providerDetails;
-
-              const mergedMetadata: ProductMetadata = {
-                creatorAccountId: existingMetadata?.creatorAccountId,
-                fees: existingMetadata?.fees ?? [],
-                providerDetails: newProviderDetails ?? existingMetadata?.providerDetails,
-                downloads: product.metadata?.downloads ?? existingMetadata?.downloads,
-                purchaseGate: existingMetadata?.purchaseGate,
-                affiliate: existingMetadata?.affiliate,
-              };
+              const mergedMetadata = mergeProductMetadata(existingMetadata, product.metadata);
 
               await db
                 .update(schema.products)
@@ -790,9 +806,23 @@ export const ProductStoreLive = Layer.effect(
         Effect.tryPromise({
           try: async () => {
             const now = new Date();
+            const existingResults = await db
+              .select()
+              .from(schema.products)
+              .where(eq(schema.products.id, id))
+              .limit(1);
+
+            if (existingResults.length === 0) {
+              return null;
+            }
+
+            const existingProduct = existingResults[0]!;
+            const existingMetadata = existingProduct.metadata as ProductMetadata | null;
+            const mergedMetadata = mergeProductMetadata(existingMetadata, metadata);
+
             await db
               .update(schema.products)
-              .set({ metadata, updatedAt: now })
+              .set({ metadata: mergedMetadata, updatedAt: now })
               .where(eq(schema.products.id, id));
 
             const results = await db

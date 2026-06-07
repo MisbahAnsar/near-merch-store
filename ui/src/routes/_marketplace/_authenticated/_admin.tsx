@@ -48,7 +48,7 @@ export const Route = createFileRoute("/_marketplace/_authenticated/_admin")({
       throw redirect({
         to: "/login",
         search: {
-          redirect: location.pathname,
+          redirect: (location as { href?: string }).href ?? location.pathname,
         },
       });
     }
@@ -187,6 +187,7 @@ if (isProvidersActive) return "Providers";
                     <DropdownMenuItem asChild className="focus:bg-transparent hover:bg-transparent focus:text-[#00EC97] p-0">
                       <Link
                         to="/dashboard/orders"
+                        search={{ orderId: undefined, search: undefined }}
                         preload="intent"
                         preloadDelay={0}
                         className={`block text-sm font-semibold transition-colors px-3 py-2 rounded-lg ${
@@ -285,6 +286,7 @@ if (isProvidersActive) return "Providers";
 
               <Link
                 to="/dashboard/orders"
+                search={{ orderId: undefined, search: undefined }}
                 preload="intent"
                 preloadDelay={0}
                 className={cn(

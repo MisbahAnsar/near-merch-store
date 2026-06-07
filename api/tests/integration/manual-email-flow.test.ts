@@ -188,7 +188,8 @@ describe('Manual email flow', () => {
     expect(emailLog).toContain('Reply-To: support@nearmerch.com');
     expect(emailLog).toContain(`Order ID: ${checkoutResult.orderId}`);
     expect(emailLog).toContain('Manual Product');
-    expect(emailLog).toContain('123 Main St');
-    expect(emailLog).toContain('john@example.com');
+    expect(emailLog).toContain(`/dashboard/orders?orderId=${checkoutResult.orderId}`);
+    expect(emailLog).not.toContain('123 Main St');
+    expect(emailLog).not.toContain('john@example.com');
   });
 });

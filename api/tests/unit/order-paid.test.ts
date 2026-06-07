@@ -68,6 +68,7 @@ function createRuntime(confirmOrder: ReturnType<typeof vi.fn>): MarketplaceRunti
     paymentProviders: [],
     exclusiveCheckProviders: [],
     storageProviders: [],
+    hostUrl: 'https://nearmerch.com',
     fulfillmentConfig: {
       manual: {
         fromEmail: 'orders@nearmerch.com',
@@ -168,8 +169,9 @@ describe('handleOrderPaidEffect', () => {
       replyTo: 'support@nearmerch.com',
     });
     expect(notifications[0]?.body).toContain('Manual Product x1');
-    expect(notifications[0]?.body).toContain('123 Main St');
-    expect(notifications[0]?.body).toContain('john@example.com');
+    expect(notifications[0]?.body).toContain('https://nearmerch.com/dashboard/orders?orderId=order_123');
+    expect(notifications[0]?.body).not.toContain('123 Main St');
+    expect(notifications[0]?.body).not.toContain('john@example.com');
     expect(auditLogs).toHaveLength(1);
     expect(auditLogs[0]).toMatchObject({
       actor: 'service:order-paid',

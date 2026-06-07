@@ -44,6 +44,7 @@ export default createPlugin({
     network: z.enum(["mainnet", "testnet"]).default("mainnet"),
     contractId: z.string().default("social.near"),
     nodeUrl: z.string().optional(),
+    hostUrl: z.string().url().optional(),
     returnAddress: ReturnAddressSchema.optional(),
     luluEnvironment: z.enum(['sandbox', 'production']).default('production'),
     storageProvider: z.enum(["r2", "s3"]).optional(),
@@ -154,6 +155,9 @@ export default createPlugin({
                 region: config.variables.storageRegion,
               }
             : undefined,
+          {
+            hostUrl: config.variables.hostUrl,
+          },
         ),
       );
 
@@ -389,6 +393,36 @@ export default createPlugin({
 
         return { product: sanitizeProductForPublic(exit.value.product) };
       }),
+
+      getAdminProduct: builder.getAdminProduct
+        .use(requireAdmin)
+        .handler(async ({ input, errors }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const service = yield* ProductService;
+              return yield* service.getProduct(input.id);
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            if (
+              error instanceof Error &&
+              error.message.includes("Product not found")
+            ) {
+              throw errors.NOT_FOUND({
+                message: error.message,
+                data: { resource: "product", resourceId: input.id },
+              });
+            }
+            throw error;
+          }
+
+          return { product: exit.value.product };
+        }),
 
       searchProducts: builder.searchProducts.handler(async ({ input }) => {
         const exit = await managedRuntime.runPromiseExit(

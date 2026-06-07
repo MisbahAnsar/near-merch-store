@@ -102,6 +102,18 @@ export const contract = oc.router({
     .output(z.object({ product: ProductSchema }))
     .errors({ NOT_FOUND }),
 
+  getAdminProduct: oc
+    .route({
+      method: "GET",
+      path: "/admin/products/{id}",
+      summary: "Get product by ID (Admin)",
+      description: "Returns a single product by its ID without public metadata sanitization.",
+      tags: ["Admin", "Products"],
+    })
+    .input(z.object({ id: z.string() }))
+    .output(z.object({ product: ProductSchema }))
+    .errors({ NOT_FOUND, UNAUTHORIZED }),
+
   searchProducts: oc
     .route({
       method: "GET",

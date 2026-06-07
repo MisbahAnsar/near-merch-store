@@ -38,7 +38,8 @@ function LoginPage() {
           queryClient.invalidateQueries();
           await new Promise((resolve) => setTimeout(resolve, 100));
           const targetPath = redirectPath || "/account";
-          navigate({ to: targetPath });
+          const targetUrl = new URL(targetPath, window.location.origin);
+          navigate({ to: `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}` });
         },
         onError: (error: any) => {
           setIsSigningIn(false);
