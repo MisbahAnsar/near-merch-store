@@ -22,6 +22,7 @@ import { TagInput } from "@/components/ui/tag-input";
 import { cn } from "@/lib/utils";
 import { PROVIDER_MAP, type ProviderName } from "@/lib/providers";
 import { useFileUpload } from "@/hooks/use-file-upload";
+import { LuluBuilder } from "@/components/admin/lulu-product-builder";
 import {
   useBrowseCatalog,
   useCatalogProduct,
@@ -320,6 +321,8 @@ function NewProductInner({
 
       {step === "provider" ? (
         <ProviderSelector form={form} onSelect={handleSelectProvider} />
+      ) : form.providerName === "lulu" ? (
+        <LuluBuilder onBack={handleBackToProvider} />
       ) : isManual ? (
         <BasicBuilder
           form={form}

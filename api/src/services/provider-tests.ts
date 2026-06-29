@@ -438,7 +438,7 @@ export function runProviderTestStepEffect(options: {
             shippingCost: quote.shippingCost,
             successUrl: scenario.successUrl ?? `https://nearmerch.com/admin/providers?provider=${provider}`,
             cancelUrl: scenario.cancelUrl ?? `https://nearmerch.com/admin/providers?provider=${provider}`,
-            paymentProvider: scenario.paymentProvider ?? 'pingpay',
+            paymentProvider: ((scenario as Record<string, unknown>).paymentProvider as 'stripe' | 'pingpay' | undefined) ?? 'pingpay',
           });
 
           const order = yield* orderStore.find(checkout.orderId);
