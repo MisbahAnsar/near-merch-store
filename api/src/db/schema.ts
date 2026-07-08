@@ -427,6 +427,27 @@ export const providerTestStates = pgTable(
 
 
 
+export const merchBoxRequests = pgTable(
+  "merch_box_requests",
+  {
+    id: text("id").primaryKey(),
+    nearAccountId: text("near_account_id").notNull(),
+    items: jsonb("items").$type<Array<{ article: string; qty: number; cost: number }>>().notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    reviewed: boolean("reviewed").notNull().default(false),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "date" }),
+    reviewedBy: text("reviewed_by"),
+  },
+  (table) => [
+    index("merch_box_requests_account_idx").on(table.nearAccountId),
+    index("merch_box_requests_created_idx").on(table.createdAt),
+    index("merch_box_requests_reviewed_idx").on(table.reviewed),
+  ],
+);
+
 export const newsletterSubscriptions = pgTable(
   "newsletter_subscriptions",
   {

@@ -36,6 +36,8 @@ import {
   DeleteOrdersOutputSchema,
   GetOrderAuditLogOutputSchema,
   AssetSchema,
+  MerchBoxItemSchema,
+  MerchBoxRequestSchema,
 } from "./schema";
 import { SyncProgressEventSchema, ProviderCatalogProductSchema, CatalogSlotSchema, ProviderCatalogVariantSchema } from "./services/fulfillment/schema";
 
@@ -74,12 +76,13 @@ export const contract = oc.router({
       path: "/merch-box/request",
       summary: "Submit a merch box request",
       description:
-        "Validates Vanguard SBT ownership and sends a merch box request email to merch@near.foundation.",
+        "Validates Vanguard SBT ownership and stores the merch box request for admin review.",
       tags: ["Merch Box"],
     })
     .input(
       z.object({
-        orderDetails: z.string().min(1).max(5000),
+        items: z.array(MerchBoxItemSchema).min(1),
+        notes: z.string().max(5000).nullable().default(null),
       }),
     )
     .output(
@@ -108,6 +111,50 @@ export const contract = oc.router({
         isHolder: z.boolean(),
       }),
     ),
+
+  getMerchBoxRequests: oc
+    .route({
+      method: "GET",
+      path: "/admin/merch-box",
+      summary: "List merch box requests (Admin)",
+      description:
+        "Returns a paginated list of merch box requests. Requires admin authentication.",
+      tags: ["Admin", "Merch Box"],
+    })
+    .input(
+      z.object({
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+        reviewed: z.boolean().optional(),
+      }),
+    )
+    .output(
+      z.object({
+        requests: z.array(MerchBoxRequestSchema),
+        total: z.number(),
+      }),
+    )
+    .errors({ UNAUTHORIZED }),
+
+  markMerchBoxRequestReviewed: oc
+    .route({
+      method: "POST",
+      path: "/admin/merch-box/{id}/review",
+      summary: "Mark a merch box request as reviewed (Admin)",
+      description: "Marks a merch box request as reviewed by an admin.",
+      tags: ["Admin", "Merch Box"],
+    })
+    .input(
+      z.object({
+        id: z.string(),
+      }),
+    )
+    .output(
+      z.object({
+        success: z.boolean(),
+      }),
+    )
+    .errors({ NOT_FOUND, UNAUTHORIZED }),
 
   getProducts: oc
     .route({

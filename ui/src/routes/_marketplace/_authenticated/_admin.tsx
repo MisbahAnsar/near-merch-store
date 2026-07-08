@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, redirect, useMatchRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
+  Gift,
   LayoutDashboard,
   Package,
   ShoppingBag,
@@ -83,6 +84,7 @@ function AdminLayout() {
   
   const isCollectionsActive = !!matchRoute({ to: "/dashboard/collections" });
   const isNewProductActive = !!matchRoute({ to: "/dashboard/new-product" });
+  const isMerchBoxActive = !!matchRoute({ to: "/dashboard/merch-box" });
 
   const getActiveSectionName = () => {
     if (isOverviewActive) return "Overview";
@@ -93,10 +95,11 @@ if (isProvidersActive) return "Providers";
   
   if (isCollectionsActive) return "Collections";
   if (isNewProductActive) return "Create Product";
+  if (isMerchBoxActive) return "Merch Box";
   return "Overview";
   };
 
-  const hasActiveSection = isOverviewActive || isInventoryActive || isOrdersActive || isUsersActive || isProvidersActive  || isCollectionsActive || isNewProductActive;
+  const hasActiveSection = isOverviewActive || isInventoryActive || isOrdersActive || isUsersActive || isProvidersActive  || isCollectionsActive || isNewProductActive || isMerchBoxActive;
 
   return (
     <div className="bg-background min-h-screen pt-32 overflow-x-hidden">
@@ -246,6 +249,18 @@ if (isProvidersActive) return "Providers";
                         Create Product
                       </Link>
                     </DropdownMenuItem>
+                    <DropdownMenuItem asChild className="focus:bg-transparent hover:bg-transparent focus:text-[#00EC97] p-0">
+                      <Link
+                        to="/dashboard/merch-box"
+                        preload="intent"
+                        preloadDelay={0}
+                        className={`block text-sm font-semibold transition-colors px-3 py-2 rounded-lg ${
+                          isMerchBoxActive ? 'text-[#00EC97]' : 'text-foreground hover:text-[#00EC97]'
+                        }`}
+                      >
+                        Merch Box
+                      </Link>
+                    </DropdownMenuItem>
                   </div>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -364,6 +379,22 @@ if (isProvidersActive) return "Providers";
               >
                 <Plus className="size-4" />
                 <span className="flex-1 text-sm font-semibold">Create Product</span>
+                <ChevronRight className="size-4" />
+              </Link>
+
+              <Link
+                to="/dashboard/merch-box"
+                preload="intent"
+                preloadDelay={0}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors rounded-lg",
+                  isMerchBoxActive
+                    ? "bg-[#00EC97] border border-[#00EC97] text-black"
+                    : "bg-background border border-border/60 hover:bg-[#00EC97] hover:border-[#00EC97] hover:text-black"
+                )}
+              >
+                <Gift className="size-4" />
+                <span className="flex-1 text-sm font-semibold">Merch Box</span>
                 <ChevronRight className="size-4" />
               </Link>
             </div>

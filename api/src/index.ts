@@ -30,6 +30,7 @@ import { AssetService, AssetServiceLive } from './services/assets';
 import { StripeService } from './services/stripe';
 import { NewsletterService, NewsletterServiceLive } from './services/newsletter';
 import { MerchBoxService, MerchBoxServiceLive } from './services/merch-box';
+import { MerchBoxStoreLive } from './store/merch-box';
 import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive } from './store';
 import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
@@ -184,16 +185,12 @@ export default createPlugin({
           ProductTypeStoreLive,
           NewsletterStoreLive,
           AssetStoreLive,
+          MerchBoxStoreLive,
         ),
         dbLayer,
       );
 
-      const merchBoxServiceLayer = Layer.provideMerge(
-        MerchBoxServiceLive({
-          fromEmail: config.secrets.MANUAL_FULFILLMENT_FROM_EMAIL || 'orders@nearmerch.com',
-        }),
-        emailServiceLayer,
-      );
+      const merchBoxServiceLayer = MerchBoxServiceLive;
 
       const servicesLayer = Layer.provideMerge(
         Layer.mergeAll(
@@ -364,7 +361,8 @@ export default createPlugin({
               const service = yield* MerchBoxService;
               return yield* service.submitRequest({
                 nearAccountId: context.nearAccountId!,
-                orderDetails: input.orderDetails,
+                items: input.items,
+                notes: input.notes ?? null,
               });
             }),
           );
@@ -397,6 +395,60 @@ export default createPlugin({
           if (Exit.isFailure(exit)) {
             const error = Cause.squash(exit.cause);
             throw new ORPCError("BAD_REQUEST", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
+        }),
+
+      getMerchBoxRequests: builder.getMerchBoxRequests
+        .use(requireAdmin)
+        .handler(async ({ input }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const service = yield* MerchBoxService;
+              return yield* service.getRequests({
+                limit: input.limit,
+                offset: input.offset,
+                reviewed: input.reviewed,
+              });
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            throw new ORPCError("INTERNAL_SERVER_ERROR", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
+        }),
+
+      markMerchBoxRequestReviewed: builder.markMerchBoxRequestReviewed
+        .use(requireAdmin)
+        .handler(async ({ input, context }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const service = yield* MerchBoxService;
+              yield* service.markReviewed({
+                id: input.id,
+                reviewedBy: context.nearAccountId || 'admin',
+              });
+              return { success: true };
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            throw new ORPCError("INTERNAL_SERVER_ERROR", {
               message: error instanceof Error ? error.message : String(error),
             });
           }

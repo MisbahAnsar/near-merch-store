@@ -32,6 +32,11 @@ export {
   type NewsletterSubscribeStatus,
 } from "./newsletter";
 
+export {
+  MerchBoxStore,
+  MerchBoxStoreLive,
+} from "./merch-box";
+
 
 
 export {

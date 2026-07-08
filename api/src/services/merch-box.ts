@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from 'every-plugin/effect';
-import { EmailService } from './email';
+import { MerchBoxStore, type MerchBoxRequestRow } from '../store/merch-box';
 
 const VANGUARD_CONTRACT_ID = 'vanguard.nearlegion.near';
 const MAINNET_RPC_URL = 'https://rpc.mainnet.near.org';
@@ -87,87 +87,76 @@ async function checkVanguardSbt(nodeUrl: string, accountId: string): Promise<boo
 export class MerchBoxService extends Context.Tag('MerchBoxService')<
   MerchBoxService,
   {
-    readonly checkSbt: (params: {
-      nearAccountId: string;
-    }) => Effect.Effect<{ isHolder: boolean }>;
+    readonly checkSbt: (params: { nearAccountId: string }) => Effect.Effect<{ isHolder: boolean }>;
     readonly submitRequest: (params: {
       nearAccountId: string;
-      orderDetails: string;
+      items: Array<{ article: string; qty: number; cost: number }>;
+      notes: string | null;
     }) => Effect.Effect<{ success: true }, Error>;
+    readonly getRequests: (params: {
+      limit: number;
+      offset: number;
+      reviewed?: boolean;
+    }) => Effect.Effect<{ requests: MerchBoxRequestRow[]; total: number }, Error>;
+    readonly markReviewed: (params: { id: string; reviewedBy: string }) => Effect.Effect<void, Error>;
   }
 >() {}
 
-export interface MerchBoxServiceConfig {
-  fromEmail: string;
-}
+export const MerchBoxServiceLive = Layer.effect(
+  MerchBoxService,
+  Effect.gen(function* () {
+    const store = yield* MerchBoxStore;
+    const nodeUrl = MAINNET_RPC_URL;
 
-export const MerchBoxServiceLive = (config: MerchBoxServiceConfig) =>
-  Layer.effect(
-    MerchBoxService,
-    Effect.gen(function* () {
-      const emailService = yield* EmailService;
-      const nodeUrl = MAINNET_RPC_URL;
+    function resolveSbt(normalizedAccountId: string): Effect.Effect<boolean, never> {
+      const now = Date.now();
+      const cached = vanguardSbtCache.get(normalizedAccountId);
+      if (cached && cached.expiresAt > now) {
+        return Effect.succeed(cached.isHolder);
+      }
+      return Effect.promise(() =>
+        checkVanguardSbt(nodeUrl, normalizedAccountId).then((result) => {
+          vanguardSbtCache.set(normalizedAccountId, {
+            isHolder: result,
+            expiresAt: Date.now() + CACHE_TTL_MS,
+          });
+          return result;
+        }),
+      ).pipe(Effect.catchAll(() => Effect.succeed(false)));
+    }
 
-      return {
-        checkSbt: ({ nearAccountId }) =>
-          Effect.gen(function* () {
-            const now = Date.now();
-            const normalizedAccountId = nearAccountId.trim().toLowerCase();
-            const cached = vanguardSbtCache.get(normalizedAccountId);
+    return {
+      checkSbt: ({ nearAccountId }) =>
+        Effect.gen(function* () {
+          const isHolder = yield* resolveSbt(nearAccountId.trim().toLowerCase());
+          return { isHolder };
+        }),
 
-            if (cached && cached.expiresAt > now) {
-              return { isHolder: cached.isHolder };
-            }
+      submitRequest: ({ nearAccountId, items, notes }) =>
+        Effect.gen(function* () {
+          const isHolder = yield* resolveSbt(nearAccountId.trim().toLowerCase());
 
-            const isHolder = yield* Effect.promise(() =>
-              checkVanguardSbt(nodeUrl, normalizedAccountId),
-            ).pipe(Effect.catchAll(() => Effect.succeed(false)));
+          if (!isHolder) {
+            yield* Effect.fail(
+              new MerchBoxError(
+                'Vanguard SBT not found. You need a Vanguard SBT to request a merch box.',
+              ),
+            );
+          }
 
-            vanguardSbtCache.set(normalizedAccountId, {
-              isHolder,
-              expiresAt: now + CACHE_TTL_MS,
-            });
+          yield* store.create({ nearAccountId, items, notes });
+          return { success: true as const };
+        }),
 
-            return { isHolder };
-          }),
-        submitRequest: ({ nearAccountId, orderDetails }) =>
-          Effect.gen(function* () {
-            const normalizedAccountId = nearAccountId.trim().toLowerCase();
-            const cached = vanguardSbtCache.get(normalizedAccountId);
-            const now = Date.now();
+      getRequests: ({ limit, offset, reviewed }) =>
+        Effect.gen(function* () {
+          return yield* store.findAll({ limit, offset, reviewed });
+        }),
 
-            let isHolder: boolean;
-
-            if (cached && cached.expiresAt > now) {
-              isHolder = cached.isHolder;
-            } else {
-              isHolder = yield* Effect.promise(() =>
-                checkVanguardSbt(nodeUrl, normalizedAccountId),
-              ).pipe(Effect.catchAll(() => Effect.succeed(false)));
-
-              vanguardSbtCache.set(normalizedAccountId, {
-                isHolder,
-                expiresAt: now + CACHE_TTL_MS,
-              });
-            }
-
-            if (!isHolder) {
-              yield* Effect.fail(
-                new MerchBoxError(
-                  'Vanguard SBT not found. You need a Vanguard SBT to request a merch box.',
-                ),
-              );
-            }
-
-            yield* emailService.sendNotification({
-              to: ['merch@near.foundation'],
-              subject: `Merch Box Request from ${nearAccountId}`,
-              body: `A merch box request has been submitted.\n\nNEAR Account: ${nearAccountId}\n\nOrder Details:\n${orderDetails}`,
-              replyTo: `${nearAccountId}@near.email`,
-            });
-
-            return { success: true as const };
-          }),
-      };
-    }),
-  );
+      markReviewed: ({ id, reviewedBy }) =>
+        Effect.gen(function* () {
+          yield* store.markReviewed(id, reviewedBy);
+        }),
+    };
+  }),
+);

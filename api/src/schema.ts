@@ -791,3 +791,20 @@ export const DeleteOrdersOutputSchema = z.object({
 export const GetOrderAuditLogOutputSchema = z.object({
   logs: z.array(OrderAuditLogSchema),
 });
+
+export const MerchBoxItemSchema = z.object({
+  article: z.string().min(1),
+  qty: z.number().int().min(1),
+  cost: z.number().min(0),
+});
+
+export const MerchBoxRequestSchema = z.object({
+  id: z.string(),
+  nearAccountId: z.string(),
+  items: z.array(MerchBoxItemSchema),
+  notes: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  reviewed: z.boolean(),
+  reviewedAt: z.string().datetime().nullable(),
+  reviewedBy: z.string().nullable(),
+});
