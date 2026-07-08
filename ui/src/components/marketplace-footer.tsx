@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Gift } from "lucide-react";
 import { NearWordmark } from "@/components/near-wordmark";
 
 export function MarketplaceFooter() {
@@ -59,6 +60,14 @@ export function MarketplaceFooter() {
                 className="block link-primary text-sm hover:text-[#00EC97] transition-colors"
               >
                 All Products
+              </Link>
+
+              <Link
+                to="/claim/merch-box"
+                className="inline-flex items-center gap-1.5 text-sm text-[#00EC97] hover:text-[#00d97f] transition-colors font-medium"
+              >
+                <Gift className="h-4 w-4" />
+                Get Merch Box
               </Link>
 
               <Link

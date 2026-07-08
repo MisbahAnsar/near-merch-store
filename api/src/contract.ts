@@ -68,6 +68,47 @@ export const contract = oc.router({
     .output(SubscribeNewsletterOutputSchema)
     .errors({ BAD_REQUEST }),
 
+  submitMerchBoxRequest: oc
+    .route({
+      method: "POST",
+      path: "/merch-box/request",
+      summary: "Submit a merch box request",
+      description:
+        "Validates Vanguard SBT ownership and sends a merch box request email to merch@near.foundation.",
+      tags: ["Merch Box"],
+    })
+    .input(
+      z.object({
+        orderDetails: z.string().min(1).max(5000),
+      }),
+    )
+    .output(
+      z.object({
+        success: z.literal(true),
+      }),
+    )
+    .errors({ UNAUTHORIZED, BAD_REQUEST }),
+
+  checkVanguardSbt: oc
+    .route({
+      method: "POST",
+      path: "/merch-box/check-sbt",
+      summary: "Check Vanguard SBT ownership",
+      description:
+        "Checks whether a NEAR account holds a Vanguard SBT from vanguard.nearlegion.near.",
+      tags: ["Merch Box"],
+    })
+    .input(
+      z.object({
+        nearAccountId: z.string(),
+      }),
+    )
+    .output(
+      z.object({
+        isHolder: z.boolean(),
+      }),
+    ),
+
   getProducts: oc
     .route({
       method: "GET",

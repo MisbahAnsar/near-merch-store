@@ -29,6 +29,7 @@ import { ProductBuilderService, ProductBuilderServiceLive } from './services/pro
 import { AssetService, AssetServiceLive } from './services/assets';
 import { StripeService } from './services/stripe';
 import { NewsletterService, NewsletterServiceLive } from './services/newsletter';
+import { MerchBoxService, MerchBoxServiceLive } from './services/merch-box';
 import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive } from './store';
 import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
@@ -187,6 +188,13 @@ export default createPlugin({
         dbLayer,
       );
 
+      const merchBoxServiceLayer = Layer.provideMerge(
+        MerchBoxServiceLive({
+          fromEmail: config.secrets.MANUAL_FULFILLMENT_FROM_EMAIL || 'orders@nearmerch.com',
+        }),
+        emailServiceLayer,
+      );
+
       const servicesLayer = Layer.provideMerge(
         Layer.mergeAll(
           ProductServiceLive(runtime),
@@ -195,6 +203,7 @@ export default createPlugin({
           AssetServiceLive,
           ProductBuilderServiceLive(runtime),
           emailServiceLayer,
+          merchBoxServiceLayer,
         ),
         storesLayer,
       );
@@ -346,6 +355,54 @@ export default createPlugin({
           };
         },
       ),
+
+      submitMerchBoxRequest: builder.submitMerchBoxRequest
+        .use(requireAuth)
+        .handler(async ({ input, context }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const service = yield* MerchBoxService;
+              return yield* service.submitRequest({
+                nearAccountId: context.nearAccountId!,
+                orderDetails: input.orderDetails,
+              });
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            throw new ORPCError("BAD_REQUEST", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
+        }),
+
+      checkVanguardSbt: builder.checkVanguardSbt
+        .use(requireAuth)
+        .handler(async ({ input }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const service = yield* MerchBoxService;
+              return yield* service.checkSbt({
+                nearAccountId: input.nearAccountId,
+              });
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            throw new ORPCError("BAD_REQUEST", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
+        }),
 
       getProducts: builder.getProducts.handler(async ({ input }) => {
         const exit = await managedRuntime.runPromiseExit(

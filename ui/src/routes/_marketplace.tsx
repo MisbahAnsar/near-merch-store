@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { MarketplaceHeader } from "@/components/marketplace-header";
 import { MarketplaceFooter } from "@/components/marketplace-footer";
+import { MerchBoxFab } from "@/components/merch-box-fab";
 import { VideoBackground } from "@/components/video-background";
 
 export const Route = createFileRoute("/_marketplace")({
@@ -19,6 +20,7 @@ function MarketplaceLayout() {
       </main>
 
       <MarketplaceFooter />
+      <MerchBoxFab />
     </div>
   );
 }
