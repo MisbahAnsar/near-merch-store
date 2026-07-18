@@ -18,7 +18,7 @@ type MerchBoxRequest = Awaited<ReturnType<typeof apiClient.getMerchBoxRequests>>
 
 function AdminMerchBoxPage() {
   const [showReviewed, setShowReviewed] = useState(false);
-  const { data, isLoading } = useMerchBoxRequests({ limit: 200 });
+  const { data, isLoading } = useMerchBoxRequests({ limit: 100 });
   const markReviewed = useMarkMerchBoxRequestReviewed();
 
   const requests = data?.requests ?? [];
