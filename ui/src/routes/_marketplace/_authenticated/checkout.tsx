@@ -2,6 +2,7 @@ import { useCart } from '@/hooks/use-cart';
 import { useNearAccountId } from '@/hooks/use-near-account-id';
 import { useNearPrice } from '@/hooks/use-near-price';
 import { useFormPersistence } from '@/hooks/use-form-persistence';
+import { useCartStore } from '@/stores/cart-store';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Check, ChevronsUpDown } from 'lucide-react';
 import pingpayLogoDark from '@/assets/pingpay/pingpay-logo-dark.png';
@@ -59,6 +60,8 @@ type ShippingAddress = Parameters<typeof apiClient.quote>[0]['shippingAddress'];
 
 function CheckoutPage() {
   const { cartItems, subtotal } = useCart();
+  const cartStoreItems = useCartStore((state) => state.items);
+  const { data: session } = authClient.useSession();
   const { nearPrice, isLoading: isLoadingNearPrice } = useNearPrice();
   const nearAccountId = useNearAccountId();
   const [discountCode, setDiscountCode] = useState("");
@@ -70,6 +73,19 @@ function CheckoutPage() {
   const [countryOpen, setCountryOpen] = useState(false);
   const [stateOpen, setStateOpen] = useState(false);
   const navigate = useNavigate();
+
+  const persistenceScope = useMemo(() => {
+    const userKey = session?.user?.id || nearAccountId;
+    if (!userKey) return undefined;
+
+    const cartFingerprint = Object.values(cartStoreItems)
+      .map((item) => `${item.productId}:${item.variantId}`)
+      .sort()
+      .join('|');
+    if (!cartFingerprint) return undefined;
+
+    return `${userKey}::${cartFingerprint}`;
+  }, [session?.user?.id, nearAccountId, cartStoreItems]);
   const gatedPluginIds = Array.from(
     new Set(
       cartItems
@@ -155,7 +171,10 @@ function CheckoutPage() {
     },
   });
 
-  const { clearPersistence } = useFormPersistence(form, 'checkout-form-data');
+  const { clearPersistence } = useFormPersistence(form, 'checkout-form-data', {
+    enabled: Boolean(persistenceScope),
+    scope: persistenceScope,
+  });
 
   const quoteMutation = useMutation({
     mutationFn: async (params: {
