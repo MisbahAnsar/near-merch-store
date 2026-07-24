@@ -481,7 +481,7 @@ export const contract = oc.router({
       path: "/admin/orders/delete",
       summary: "Delete orders (Admin)",
       description:
-        "Soft-deletes multiple orders. Drafts are hard-deleted. Other statuses are soft-deleted and logged.",
+        "Deletes orders. Unpaid/abandoned drafts cancel provider fulfillment first (idempotent if already gone). Paid/processing orders soft-delete without canceling fulfillment.",
       tags: ["Admin"],
     })
     .input(DeleteOrdersInputSchema)
