@@ -42,6 +42,7 @@ import { processManualWebhookEffect } from './services/webhooks/manual';
 import { logWebhookProcessingError, readWebhookBody } from './services/webhooks/common/route';
 import { runProviderTestStepEffect, saveProviderTestScenarioEffect } from './services/provider-tests';
 import { findOrderByFulfillmentRefEffect, processLuluWebhookEffect, processPrintfulWebhookEffect } from './services/fulfillment/webhook';
+import { isProviderOrderAlreadyGone } from './utils/provider-order-cancel';
 export * from './schema';
 
 
@@ -1234,6 +1235,14 @@ export default createPlugin({
       deleteOrders: builder.deleteOrders
         .use(requireAdmin)
         .handler(async ({ input, context }) => {
+          // Only unpaid/abandoned drafts should cancel provider fulfillment on delete.
+          // Paid/processing/shipped IDs are live production orders (see order-paid confirmOrder).
+          const providerCancellableOnDelete = new Set([
+            "draft_created",
+            "pending",
+            "payment_pending",
+            "expired",
+          ]);
           const actor = `admin:${context.nearAccountId || "unknown"}`;
           const errors: { orderId: string; error: string }[] = [];
           let deleted = 0;
@@ -1252,29 +1261,67 @@ export default createPlugin({
                 continue;
               }
 
-              if (order.draftOrderIds && Object.keys(order.draftOrderIds).length > 0) {
-                for (const [providerName, externalId] of Object.entries(order.draftOrderIds)) {
+              const shouldCancelProviderOrders = providerCancellableOnDelete.has(
+                order.status,
+              );
+
+              if (
+                shouldCancelProviderOrders &&
+                order.draftOrderIds &&
+                Object.keys(order.draftOrderIds).length > 0
+              ) {
+                let cancelFailed = false;
+
+                for (const [providerName, externalId] of Object.entries(
+                  order.draftOrderIds,
+                )) {
                   if (providerName === "manual") continue;
 
                   const provider = runtime.getProvider(providerName);
                   if (!provider) {
+                    const message = `Provider ${providerName} not found`;
                     console.warn(
-                      `[deleteOrders] Provider ${providerName} not found for order ${orderId}`,
+                      `[deleteOrders] ${message} for order ${orderId}`,
                     );
+                    errors.push({ orderId, error: message });
+                    cancelFailed = true;
                     continue;
                   }
 
                   try {
-                    await provider.client.cancelOrder({ id: externalId as string });
+                    await provider.client.cancelOrder({
+                      id: externalId as string,
+                    });
                     console.log(
                       `[deleteOrders] Cancelled ${providerName} order ${externalId} for order ${orderId}`,
                     );
                   } catch (err) {
+                    const message =
+                      err instanceof Error ? err.message : String(err);
+
+                    // Already gone at the provider = cleanup goal met (idempotent).
+                    if (isProviderOrderAlreadyGone(message)) {
+                      console.log(
+                        `[deleteOrders] ${providerName} order ${externalId} already gone for order ${orderId}; treating cancel as success`,
+                      );
+                      continue;
+                    }
+
                     console.warn(
                       `[deleteOrders] Failed to cancel ${providerName} order ${externalId}:`,
-                      err instanceof Error ? err.message : String(err),
+                      message,
                     );
+                    errors.push({
+                      orderId,
+                      error: `Failed to cancel ${providerName} order ${externalId}: ${message}`,
+                    });
+                    cancelFailed = true;
                   }
+                }
+
+                // Do not delete abandoned drafts if provider cancel did not succeed.
+                if (cancelFailed) {
+                  continue;
                 }
               }
 
@@ -1287,7 +1334,7 @@ export default createPlugin({
 
               if (deleteResult.deleted > 0) {
                 deleted++;
-            } else {
+              } else {
                 errors.push(...deleteResult.errors);
               }
             } catch (err) {
