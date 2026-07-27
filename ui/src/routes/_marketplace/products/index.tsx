@@ -20,6 +20,10 @@ import { useCart } from "@/hooks/use-cart";
 import { cn } from "@/lib/utils";
 import { COLOR_MAP } from "@/lib/product-utils";
 import { getLowestVariantPrice } from "@/lib/product-price";
+import {
+  getOrderedProductCategories,
+  getProductsCategorySearch,
+} from "@/lib/products-route-search";
 
 import {
   productLoaders,
@@ -31,7 +35,7 @@ import {
   type Product,
   type Collection,
 } from "@/integrations/api";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Search, Filter, X, ChevronDown, ChevronUp, Square, Grid3x3 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 
@@ -71,6 +75,7 @@ type BrandFilter = 'all' | string;
 function ProductsIndexPage() {
   const { addToCart } = useCart();
   const { category: urlCategory } = Route.useSearch();
+  const navigate = useNavigate();
   
   const { data: productTypesData } = useProductTypes();
   const productTypes = productTypesData?.productTypes ?? [];
@@ -86,10 +91,10 @@ function ProductsIndexPage() {
   const [sortBy, setSortBy] = useState<SortOption>('relevance');
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
   
-  const productTypeCategoriesForFilter = useMemo(() => [
-    { key: 'all', label: 'All' },
-    ...productTypes.map(pt => ({ key: pt.slug, label: pt.label }))
-  ], [productTypes]);
+  const productTypeCategoriesForFilter = useMemo(
+    () => getOrderedProductCategories(productTypes),
+    [productTypes]
+  );
   
   // Update category filter when URL changes
   useEffect(() => {
@@ -99,6 +104,14 @@ function ProductsIndexPage() {
       setCategoryFilter('all');
     }
   }, [urlCategory]);
+
+  const updateCategoryFilter = (category: CategoryFilter) => {
+    setCategoryFilter(category);
+    navigate({
+      to: "/products",
+      search: getProductsCategorySearch(category),
+    });
+  };
   const [sizeModalProduct, setSizeModalProduct] = useState<Product | null>(null);
   const [isCartSidebarOpen, setIsCartSidebarOpen] = useState(false);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -331,7 +344,7 @@ function ProductsIndexPage() {
         <div className="mb-8">
           {/* Mobile: Category dropdown + view toggle */}
           <div className="md:hidden flex items-center gap-2">
-            <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v)}>
+            <Select value={categoryFilter} onValueChange={(v) => updateCategoryFilter(v)}>
               <SelectTrigger className="flex-1 h-11 rounded-xl bg-background/60 backdrop-blur-sm border border-border/60 font-semibold text-sm hover:bg-background/80 hover:border-[#00EC97]/60 focus:ring-0 focus:ring-offset-0 data-[state=open]:border-[#00EC97] data-[state=open]:bg-background/80">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
@@ -366,7 +379,7 @@ function ProductsIndexPage() {
             {productTypeCategoriesForFilter.map((category) => (
               <button
                 key={category.key}
-                onClick={() => setCategoryFilter(category.key)}
+                onClick={() => updateCategoryFilter(category.key)}
                 className={cn(
                   "inline-flex items-center gap-2 px-8 py-3 rounded-lg bg-background/60 backdrop-blur-sm border border-border/60 hover:bg-[#00EC97] hover:border-[#00EC97] hover:text-black transition-colors font-semibold text-base",
                   categoryFilter === category.key
@@ -574,7 +587,7 @@ function ProductsIndexPage() {
                           <input
                             type="checkbox"
                             checked={categoryFilter === 'all'}
-                            onChange={() => setCategoryFilter('all')}
+                            onChange={() => updateCategoryFilter('all')}
                             className="sr-only"
                           />
                           <div className={cn(
@@ -590,7 +603,7 @@ function ProductsIndexPage() {
                             <input
                               type="checkbox"
                               checked={categoryFilter === category.key}
-                              onChange={() => setCategoryFilter(category.key as CategoryFilter)}
+                              onChange={() => updateCategoryFilter(category.key as CategoryFilter)}
                               className="sr-only"
                             />
                             <div className={cn(
@@ -875,7 +888,7 @@ function ProductsIndexPage() {
                       setDiscountFilter("all");
                       setSizeFilter("all");
                       setColorFilter("all");
-                      setCategoryFilter("all");
+                      updateCategoryFilter("all");
                       setBrandFilter("all");
                       setCollectionFilter('all');
                       setSortBy("relevance");
@@ -930,7 +943,7 @@ function ProductsIndexPage() {
                   setDiscountFilter("all");
                   setSizeFilter("all");
                   setColorFilter("all");
-                  setCategoryFilter("all");
+                  updateCategoryFilter("all");
                   setBrandFilter("all");
                 }}
                 className="mt-4 border-border/60 hover:border-[#00EC97] hover:text-[#00EC97]"
