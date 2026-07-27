@@ -1045,12 +1045,8 @@ function CheckoutPage() {
 
                 <div className="space-y-4">
                   {cartItems.map((item) => {
-                    // Filter out mockup images and use only variant images
-                    const variantImages = item.product.images?.filter(
-                      (img) => img.type !== "mockup" && img.type !== "detail" && img.variantIds && img.variantIds.length > 0
-                    ) || [];
-                    const displayImage = 
-                      variantImages[0]?.url ||
+                    const displayImage =
+                      item.imageUrl ||
                       item.product.variants?.[0]?.fulfillmentConfig?.files?.[0]?.url ||
                       item.product.images?.find((img) => img.type !== "mockup" && img.type !== "detail")?.url;
                     
