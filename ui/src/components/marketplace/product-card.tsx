@@ -19,9 +19,11 @@ import React, { useCallback, useState, useEffect } from "react";
 import { useCartSidebarStore } from "@/stores/cart-sidebar-store";
 import {
   COLOR_MAP,
+  getAvailableSizesForColor,
   getAttributeHex,
   getOptionValue,
   getVariantImageUrl,
+  resolveSelectedSizeForColor,
 } from "@/lib/product-utils";
 import { getLowestVariantPrice } from "@/lib/product-price";
 
@@ -193,16 +195,26 @@ function VerticalProductLayout({
     }
   }, [isExpanded, product, orderedColors, orderedSizes]);
 
-  const availableSizesForColor = availableSizes.filter((size) => {
-    if (size === "N/A") return true;
-    return availableVariants.some((v) => {
-      const vSize = getOptionValue(v.attributes, "Size");
-      const vColor = getOptionValue(v.attributes, "Color");
-      const colorMatches = orderedColors.length === 0 || vColor === selectedColor;
-
-      return vSize === size && colorMatches && v.availableForSale;
-    });
+  const availableSizesForColor = getAvailableSizesForColor({
+    sizes: availableSizes,
+    variants: availableVariants,
+    selectedColor,
+    hasColorOptions: orderedColors.length > 0,
   });
+  const effectiveSelectedSize =
+    needsSize
+      ? resolveSelectedSizeForColor(selectedSize, availableSizesForColor)
+      : selectedSize;
+
+  useEffect(() => {
+    if (!isExpanded || !product || !needsSize) return;
+    if (
+      availableSizesForColor.length > 0 &&
+      !availableSizesForColor.includes(selectedSize)
+    ) {
+      setSelectedSize(availableSizesForColor[0] || "");
+    }
+  }, [isExpanded, product, needsSize, selectedSize, availableSizesForColor]);
 
   const handleToggleFavorite = useCallback(
     () => toggleFavorite(product.id, product.title),
@@ -235,7 +247,7 @@ function VerticalProductLayout({
       
       let selectedVariantId: string | undefined;
       let finalColor = selectedColor || "N/A";
-      let finalSize = needsSize ? selectedSize : "N/A";
+      let finalSize = needsSize ? effectiveSelectedSize : "N/A";
 
       if (orderedColors.length > 0 || orderedSizes.length > 0) {
         const variant = availableVariants.find((v) => {
@@ -245,7 +257,7 @@ function VerticalProductLayout({
           const colorMatch =
             orderedColors.length === 0 || vColor === selectedColor;
           const sizeMatch =
-            orderedSizes.length === 0 || vSize === selectedSize;
+            orderedSizes.length === 0 || vSize === finalSize;
 
           return colorMatch && sizeMatch;
         });
@@ -272,7 +284,7 @@ function VerticalProductLayout({
         openCartSidebar();
       }
     },
-    [canPurchase, product, addToCart, selectedColor, selectedSize, orderedColors, orderedSizes, availableVariants, needsSize, openCartSidebar]
+    [canPurchase, product, addToCart, selectedColor, effectiveSelectedSize, orderedColors, orderedSizes, availableVariants, needsSize, openCartSidebar]
   );
 
   const isFavorite = favoriteIds.includes(product.id);
@@ -490,7 +502,7 @@ function VerticalProductLayout({
                   <div className="grid grid-cols-5 gap-2">
                     {availableSizesForColor.map((size) => {
                       const isAvailable = availableSizesForColor.includes(size);
-                      const isSelected = size === selectedSize;
+                      const isSelected = size === effectiveSelectedSize;
 
                       return (
                         <button

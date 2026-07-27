@@ -1,11 +1,13 @@
 import { ProductCard } from "@/components/marketplace/product-card";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { type Product, requiresSize } from "@/integrations/api";
 import {
   COLOR_MAP,
+  getAvailableSizesForColor,
   getAttributeHex,
   getOptionValue,
   getVariantImageUrl,
+  resolveSelectedSizeForColor,
 } from "@/lib/product-utils";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
@@ -62,21 +64,31 @@ export function SizeSelectionModal({
 
   const availableVariants = product.variants || [];
 
-  const availableSizesForColor = availableSizes.filter((size) => {
-    if (size === "N/A") return true;
-    return availableVariants.some((v) => {
-      const vSize = getOptionValue(v.attributes, "Size");
-      const vColor = getOptionValue(v.attributes, "Color");
-      const colorMatches = orderedColors.length === 0 || vColor === selectedColor;
-
-      return vSize === size && colorMatches && v.availableForSale;
-    });
+  const availableSizesForColor = getAvailableSizesForColor({
+    sizes: availableSizes,
+    variants: availableVariants,
+    selectedColor,
+    hasColorOptions: orderedColors.length > 0,
   });
+  const effectiveSelectedSize =
+    needsSize
+      ? resolveSelectedSizeForColor(selectedSize, availableSizesForColor)
+      : selectedSize;
+
+  useEffect(() => {
+    if (!isOpen || !product || !needsSize) return;
+    if (
+      availableSizesForColor.length > 0 &&
+      !availableSizesForColor.includes(selectedSize)
+    ) {
+      setSelectedSize(availableSizesForColor[0] || "");
+    }
+  }, [isOpen, product, needsSize, selectedSize, availableSizesForColor]);
 
   const handleAddToCart = () => {
     let selectedVariantId: string | undefined;
     let finalColor = selectedColor || "N/A";
-    let finalSize = needsSize ? selectedSize : "N/A";
+    let finalSize = needsSize ? effectiveSelectedSize : "N/A";
 
     if (orderedColors.length > 0 || orderedSizes.length > 0) {
       const variant = availableVariants.find((v) => {
@@ -85,7 +97,7 @@ export function SizeSelectionModal({
 
         const colorMatch =
           orderedColors.length === 0 || vColor === selectedColor;
-        const sizeMatch = orderedSizes.length === 0 || vSize === selectedSize;
+        const sizeMatch = orderedSizes.length === 0 || vSize === finalSize;
 
         return colorMatch && sizeMatch;
       });
@@ -115,11 +127,12 @@ export function SizeSelectionModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
         showCloseButton={false}
+        aria-describedby={undefined}
         className="rounded-2xl bg-background/60 backdrop-blur-sm border border-border/60 p-0 !max-w-[calc(100%-2.5rem)] sm:!max-w-md !left-[50%] !translate-x-[-50%]"
       >
         <div className="p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Add to Cart</h2>
+            <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">Add to Cart</DialogTitle>
           <button
             type="button"
             onClick={onClose}

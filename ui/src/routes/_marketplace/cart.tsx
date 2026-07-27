@@ -106,6 +106,7 @@ function CartPage() {
                       hideFavorite
                       hidePrice
                       priceOverride={item.unitPrice}
+                      imageOverride={item.imageUrl}
                         className="hover:shadow-none !bg-transparent !p-0"
                       actionSlot={
                         <button

@@ -67,56 +67,139 @@ export function getAttributeHex(
   return (attr as unknown as { hex?: string })?.hex;
 }
 
+interface VariantWithOptions {
+  id?: string;
+  attributes?: Array<{ name: string; value: string }> | null;
+  availableForSale?: boolean;
+  fulfillmentConfig?: { files?: Array<{ url: string }> };
+}
+
+interface ProductImageWithVariants {
+  id?: string;
+  url: string;
+  type?: string;
+  variantIds?: string[];
+}
+
+export function getAvailableSizesForColor({
+  sizes,
+  variants,
+  selectedColor,
+  hasColorOptions,
+}: {
+  sizes: string[];
+  variants: VariantWithOptions[];
+  selectedColor: string;
+  hasColorOptions: boolean;
+}): string[] {
+  return sizes.filter((size) => {
+    if (size === "N/A") return true;
+
+    return variants.some((variant) => {
+      const variantSize = getOptionValue(variant.attributes, "Size");
+      const variantColor = getOptionValue(variant.attributes, "Color");
+      const colorMatches = !hasColorOptions || variantColor === selectedColor;
+
+      return variantSize === size && colorMatches && variant.availableForSale;
+    });
+  });
+}
+
+export function resolveSelectedSizeForColor(
+  selectedSize: string,
+  availableSizesForColor: string[]
+): string {
+  if (availableSizesForColor.includes(selectedSize)) {
+    return selectedSize;
+  }
+
+  return availableSizesForColor[0] || "";
+}
+
+function isProductDisplayImage(image: ProductImageWithVariants): boolean {
+  return image.type !== "mockup" && image.type !== "detail";
+}
+
+function getEmbeddedPrintfulVariantId(value: string | undefined): string | undefined {
+  return value?.match(/(?:printful-variant-|file-.+-)(\d+)$/)?.[1];
+}
+
+function imageMatchesVariant(
+  image: ProductImageWithVariants,
+  variantId: string
+): boolean {
+  if (image.variantIds?.includes(variantId)) {
+    return true;
+  }
+
+  const imageVariantId = getEmbeddedPrintfulVariantId(image.id);
+  const selectedVariantId = getEmbeddedPrintfulVariantId(variantId);
+
+  return Boolean(
+    imageVariantId &&
+      selectedVariantId &&
+      imageVariantId === selectedVariantId
+  );
+}
+
+export function getVariantImage(
+  product: {
+    images?: ProductImageWithVariants[];
+    variants?: VariantWithOptions[];
+  },
+  variantId: string
+): ProductImageWithVariants | undefined {
+  const displayImages = product.images?.filter(isProductDisplayImage) || [];
+  const exactImage = displayImages.find((image) =>
+    imageMatchesVariant(image, variantId)
+  );
+
+  if (exactImage) {
+    return exactImage;
+  }
+
+  const selectedVariant = product.variants?.find((variant) => variant.id === variantId);
+  const selectedColor = getOptionValue(selectedVariant?.attributes, "Color");
+
+  if (selectedColor) {
+    const sameColorVariantIds =
+      product.variants
+        ?.filter(
+          (variant) =>
+            variant.id &&
+            getOptionValue(variant.attributes, "Color") === selectedColor
+        )
+        .map((variant) => variant.id as string) || [];
+
+    const sameColorImage = displayImages.find((image) =>
+      sameColorVariantIds.some((sameColorVariantId) =>
+        imageMatchesVariant(image, sameColorVariantId)
+      )
+    );
+
+    if (sameColorImage) {
+      return sameColorImage;
+    }
+  }
+
+  return displayImages[0];
+}
+
 /**
  * Finds the image URL for a specific variant.
  * Prioritizes variant-specific images (with variantIds), excluding mockup and detail types.
  * Falls back to first variant image, then product image, then variant fulfillment design file.
  */
 export function getVariantImageUrl(
-  product: { images?: Array<{ url: string; type?: string; variantIds?: string[] }>; variants?: Array<{ id: string; fulfillmentConfig?: { files?: Array<{ url: string }> } }> },
+  product: {
+    images?: ProductImageWithVariants[];
+    variants?: VariantWithOptions[];
+  },
   variantId: string
 ): string | undefined {
-  if (!product.images || product.images.length === 0) {
-    // Fallback to variant fulfillment design file
-    const variant = product.variants?.find((v) => v.id === variantId);
-    return variant?.fulfillmentConfig?.files?.[0]?.url;
-  }
+  const variantImage = getVariantImage(product, variantId);
+  if (variantImage) return variantImage.url;
 
-  // First, try to find a variant-specific image (not mockup, not detail)
-  const variantImage = product.images.find(
-    (img) =>
-      img.variantIds?.includes(variantId) &&
-      img.type !== "mockup" &&
-      img.type !== "detail"
-  );
-
-  if (variantImage) {
-    return variantImage.url;
-  }
-
-  // Fallback to first non-mockup, non-detail image with variantIds
-  const fallbackImage = product.images.find(
-    (img) =>
-      img.variantIds &&
-      img.variantIds.length > 0 &&
-      img.type !== "mockup" &&
-      img.type !== "detail"
-  );
-
-  if (fallbackImage) {
-    return fallbackImage.url;
-  }
-
-  // Fallback to any non-mockup, non-detail image
-  const anyImage = product.images.find(
-    (img) => img.type !== "mockup" && img.type !== "detail"
-  );
-
-  if (anyImage) {
-    return anyImage.url;
-  }
-
-  // Last resort: variant fulfillment design file
   const variant = product.variants?.find((v) => v.id === variantId);
   return variant?.fulfillmentConfig?.files?.[0]?.url;
 }

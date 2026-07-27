@@ -19,9 +19,12 @@ import {
 } from "@/integrations/api";
 import {
   COLOR_MAP,
+  getAvailableSizesForColor,
   getAttributeHex,
   getOptionValue,
+  getVariantImage,
   getVariantImageUrl,
+  resolveSelectedSizeForColor,
 } from "@/lib/product-utils";
 import {
   absoluteUrl,
@@ -242,26 +245,27 @@ function ProductDetailPage() {
   const [selectedColor, setSelectedColor] = useState<string>(defaultColor);
   const [selectedSize, setSelectedSize] = useState<string>(defaultSize);
 
+  const availableSizesForColor = getAvailableSizesForColor({
+    sizes: orderedSizes,
+    variants: availableVariants,
+    selectedColor,
+    hasColorOptions: orderedColors.length > 0,
+  });
+  const effectiveSelectedSize = resolveSelectedSizeForColor(
+    selectedSize,
+    availableSizesForColor
+  );
+
   const selectedVariant = availableVariants.find((v) => {
     const vSize = getOptionValue(v.attributes, "Size");
     const vColor = getOptionValue(v.attributes, "Color");
     const colorMatch = orderedColors.length === 0 || vColor === selectedColor;
-    const sizeMatch = orderedSizes.length === 0 || vSize === selectedSize;
+    const sizeMatch = orderedSizes.length === 0 || vSize === effectiveSelectedSize;
     return colorMatch && sizeMatch;
   }) || availableVariants[0];
 
   const displayPrice = selectedVariant?.price || product.price;
   const selectedVariantId = selectedVariant?.id;
-
-  const availableSizesForColor = orderedSizes.filter((size) => {
-    return availableVariants.some((v) => {
-      const vSize = getOptionValue(v.attributes, "Size");
-      const vColor = getOptionValue(v.attributes, "Color");
-      const colorMatches = orderedColors.length === 0 || vColor === selectedColor;
-
-      return vSize === size && colorMatches && v.availableForSale;
-    });
-  });
 
   const [quantity, setQuantity] = useState(1);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -312,10 +316,13 @@ function ProductDetailPage() {
   // Find variant-specific image for the selected variant
   const variantImage = useMemo(
     () =>
-      validImages.find((img: ProductImage) =>
-        img.variantIds?.includes(selectedVariantId || "")
-      ),
-    [validImages, selectedVariantId]
+      selectedVariantId
+        ? getVariantImage(
+            { images: validImages, variants: availableVariants },
+            selectedVariantId
+          )
+        : undefined,
+    [validImages, availableVariants, selectedVariantId]
   );
 
   const handleShareReferral = async () => {
@@ -356,6 +363,15 @@ function ProductDetailPage() {
     isInitialMountRef.current = true;
     prevColorSizeRef.current = null;
   }, [defaultColor, defaultSize, product.id]);
+
+  useEffect(() => {
+    if (
+      availableSizesForColor.length > 0 &&
+      !availableSizesForColor.includes(selectedSize)
+    ) {
+      setSelectedSize(availableSizesForColor[0] || "");
+    }
+  }, [selectedSize, availableSizesForColor]);
 
   // When color/variant changes via color picker (not thumbnail click), update main image
   useEffect(() => {
@@ -409,7 +425,7 @@ function ProductDetailPage() {
       addToCart(
         product.slug,
         selectedVariantId || '',
-        selectedSize,
+        effectiveSelectedSize,
         selectedColor,
         variantImageUrl,
         activeReferralAccountId,
@@ -802,7 +818,7 @@ function ProductDetailPage() {
                         disabled={!isAvailable}
                         className={cn(
                             "px-5 py-2.5 tracking-[-0.48px] transition-all rounded-lg font-medium text-sm border-2",
-                          size === selectedSize
+                          size === effectiveSelectedSize
                               ? "bg-[#00EC97] text-black border-[#00EC97]"
                               : "bg-background/40 border-border/60 hover:border-[#00EC97] hover:text-[#00EC97] hover:bg-background/60",
                           !isAvailable &&
