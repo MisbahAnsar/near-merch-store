@@ -20,10 +20,7 @@ import { useCart } from "@/hooks/use-cart";
 import { cn } from "@/lib/utils";
 import { COLOR_MAP } from "@/lib/product-utils";
 import { getLowestVariantPrice } from "@/lib/product-price";
-import {
-  getOrderedProductCategories,
-  getProductsCategorySearch,
-} from "@/lib/products-route-search";
+import { getProductsCategorySearch } from "@/lib/products-route-search";
 
 import {
   productLoaders,
@@ -91,10 +88,10 @@ function ProductsIndexPage() {
   const [sortBy, setSortBy] = useState<SortOption>('relevance');
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
   
-  const productTypeCategoriesForFilter = useMemo(
-    () => getOrderedProductCategories(productTypes),
-    [productTypes]
-  );
+  const productTypeCategoriesForFilter = useMemo(() => [
+    { key: 'all', label: 'All' },
+    ...productTypes.map(pt => ({ key: pt.slug, label: pt.label }))
+  ], [productTypes]);
   
   // Update category filter when URL changes
   useEffect(() => {
