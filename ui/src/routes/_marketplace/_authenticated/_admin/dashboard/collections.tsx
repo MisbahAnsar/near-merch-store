@@ -4,10 +4,11 @@ import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useCollection, useCollections, useCreateCollection, useDeleteCollection, useUpdateCollection, useUpdateCollectionFeaturedProduct, type Collection } from "@/integrations/api";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronRight, X, Search, Package } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, X, Search, Package } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -48,6 +49,7 @@ function AdminCollections() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [pendingFeaturedId, setPendingFeaturedId] = useState<string | null>(null);
   const [pendingSlug, setPendingSlug] = useState<string | null>(null);
+  const [deleteCollection, setDeleteCollection] = useState<Collection | null>(null);
 
   const { data: expandedCollectionData } = useCollection(expandedRow ?? '');
   
@@ -93,6 +95,16 @@ function AdminCollections() {
   const autoSlug = useMemo(() => slugify(name), [name]);
 
   const canCreate = name.trim().length > 0 && autoSlug.length > 0 && !createMutation.isPending;
+
+  const handleConfirmDelete = () => {
+    if (!deleteCollection) return;
+
+    deleteMutation.mutate({ id: deleteCollection.slug }, {
+      onSuccess: () => {
+        setDeleteCollection(null);
+      }
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -194,7 +206,7 @@ function AdminCollections() {
                         variant="outline"
                         className={cn("bg-destructive text-destructive-foreground hover:bg-destructive/90")}
                         disabled={deleteMutation.isPending}
-                        onClick={() => deleteMutation.mutate({ id: collection.slug })}
+                        onClick={() => setDeleteCollection(collection)}
                       >
                         Delete
                       </Button>
@@ -407,6 +419,45 @@ function AdminCollections() {
           </table>
         </div>
       )}
+
+      <Dialog
+        open={deleteCollection !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) {
+            setDeleteCollection(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl bg-background border border-border/60">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-6 w-6 text-destructive" />
+              <DialogTitle>Confirm Delete</DialogTitle>
+            </div>
+            <DialogDescription className="pt-2">
+              Delete {deleteCollection?.name ?? "this collection"}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteCollection(null)}
+              disabled={deleteMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleteMutation.isPending}
+            >
+              Delete Collection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
