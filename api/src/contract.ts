@@ -410,7 +410,8 @@ export const contract = oc.router({
       tags: ["Orders"],
     })
     .input(z.object({ sessionId: z.string() }))
-    .output(z.object({ order: OrderWithItemsSchema.nullable() })),
+    .output(z.object({ order: OrderWithItemsSchema.nullable() }))
+    .errors({ FORBIDDEN, UNAUTHORIZED }),
 
   subscribeOrderStatus: oc
     .route({

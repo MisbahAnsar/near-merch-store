@@ -996,7 +996,7 @@ export default createPlugin({
       getOrderByCheckoutSession: builder.getOrderByCheckoutSession
         .use(requireAuth)
         .handler(
-        async ({ input }) => {
+        async ({ input, context, errors }) => {
           const exit = await managedRuntime.runPromiseExit(
             Effect.gen(function* () {
               const store = yield* OrderStore;
@@ -1014,7 +1014,16 @@ export default createPlugin({
             });
           }
 
-          return { order: exit.value };
+          const order = exit.value;
+
+          if (order && order.userId !== context.nearAccountId) {
+            throw errors.FORBIDDEN({
+              message: "You do not have permission to access this order",
+              data: { action: "read" },
+            });
+          }
+
+          return { order };
         },
       ),
 
