@@ -535,7 +535,8 @@ export const contract = oc.router({
       tags: ['Webhooks'],
     })
     .input(z.unknown())
-    .output(WebhookResponseSchema),
+    .output(WebhookResponseSchema)
+    .errors({ UNAUTHORIZED }),
 
   pingWebhook: oc
     .route({

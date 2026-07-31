@@ -39,6 +39,7 @@ import { verifyPingPayWebhookSignature } from './services/payment/pingpay/servic
 import { handlePingPayWebhookEffect } from './services/payment/pingpay/webhook';
 import { processPaymentSuccessEffect } from './services/payment/payment-success';
 import { processManualWebhookEffect } from './services/webhooks/manual';
+import { verifyManualWebhookSignature } from './services/webhooks/manual-auth';
 import { logWebhookProcessingError, readWebhookBody } from './services/webhooks/common/route';
 import { runProviderTestStepEffect, saveProviderTestScenarioEffect } from './services/provider-tests';
 import { findOrderByFulfillmentRefEffect, processLuluWebhookEffect, processPrintfulWebhookEffect } from './services/fulfillment/webhook';
@@ -72,6 +73,7 @@ export default createPlugin({
     LULU_CLIENT_SECRET: z.string().optional(),
     PING_API_KEY: z.string().optional(),
     PING_WEBHOOK_SECRET: z.string().optional(),
+    MANUAL_WEBHOOK_SECRET: z.string().optional(),
     ACCESS_KEY_ID: z.string().optional(),
     SECRET_ACCESS_KEY: z.string().optional(),
     MANUAL_FULFILLMENT_FROM_EMAIL: z.string().optional(),
@@ -1579,7 +1581,31 @@ export default createPlugin({
         return { received: true };
       }),
 
-      manualWebhook: builder.manualWebhook.handler(async ({ input }) => {
+      manualWebhook: builder.manualWebhook.handler(async ({ input, context }) => {
+        const isAdmin = Boolean(
+          context.nearAccountId && context.user?.role === 'admin',
+        );
+
+        if (!isAdmin) {
+          const signature = context.reqHeaders?.get('x-manual-signature') ?? '';
+          const body = await readWebhookBody({
+            input,
+            getRawBody: context.getRawBody,
+          });
+
+          if (
+            !verifyManualWebhookSignature(
+              body,
+              signature,
+              secrets.MANUAL_WEBHOOK_SECRET,
+            )
+          ) {
+            throw new ORPCError('UNAUTHORIZED', {
+              message: 'Invalid or missing manual webhook authorization',
+            });
+          }
+        }
+
         const parsed = ManualWebhookPayloadSchema.parse(input);
 
         const order = await managedRuntime.runPromise(
