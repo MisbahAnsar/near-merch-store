@@ -206,7 +206,7 @@ describe('Checkout Flow E2E', () => {
       expect(order.order.status).toBe('payment_failed');
     });
 
-    it('should find order by checkout session ID', async () => {
+    it('should only find an order by checkout session ID for its owner', async () => {
       const client = await getPluginClient({ nearAccountId: TEST_USER });
 
       const quoteResult = await client.quote({
@@ -236,6 +236,14 @@ describe('Checkout Flow E2E', () => {
       expect(result.order).toBeDefined();
       expect(result.order?.id).toBe(checkoutResult.orderId);
       expect(result.order?.checkoutSessionId).toBe(sessionId);
+
+      const otherUserClient = await getPluginClient({
+        nearAccountId: 'other-user.near',
+      });
+
+      await expect(
+        otherUserClient.getOrderByCheckoutSession({ sessionId }),
+      ).rejects.toThrow('You do not have permission to access this order');
     });
 
     it('should process webhook using sessionId fallback when orderId not in metadata', async () => {
