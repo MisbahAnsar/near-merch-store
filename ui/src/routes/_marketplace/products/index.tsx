@@ -20,7 +20,14 @@ import { useCart } from "@/hooks/use-cart";
 import { cn } from "@/lib/utils";
 import { COLOR_MAP } from "@/lib/product-utils";
 import { getLowestVariantPrice } from "@/lib/product-price";
-import { getProductsCategorySearch } from "@/lib/products-route-search";
+import {
+  getProductsFilterSearch,
+  parseProductsRouteSearch,
+  type DiscountFilter,
+  type PriceRange,
+  type ProductsRouteSearch,
+  type SortOption,
+} from "@/lib/products-route-search";
 
 import {
   productLoaders,
@@ -34,17 +41,11 @@ import {
 } from "@/integrations/api";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Search, Filter, X, ChevronDown, ChevronUp, Square, Grid3x3 } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 
 export const Route = createFileRoute("/_marketplace/products/")({
   pendingComponent: LoadingSpinner,
-  validateSearch: (search: Record<string, unknown>) => {
-    return {
-      category: (search.category as string) || 'all',
-      categoryId: (search.categoryId as string | undefined) || undefined,
-      collection: (search.collection as string | undefined) || undefined,
-    };
-  },
+  validateSearch: parseProductsRouteSearch,
   loader: async ({ context }) => {
     const queryClient = context.queryClient;
     try {
@@ -60,9 +61,6 @@ export const Route = createFileRoute("/_marketplace/products/")({
   component: ProductsIndexPage,
 });
 
-type PriceRange = 'all' | 'under-50' | '50-100' | '100-200' | 'over-200';
-type DiscountFilter = 'all' | 'on-sale' | 'no-discount';
-type SortOption = 'relevance' | 'price-low-high' | 'price-high-low';
 type SizeFilter = 'all' | string;
 type ColorFilter = 'all' | string;
 type CategoryFilter = 'all' | string;
@@ -71,21 +69,21 @@ type BrandFilter = 'all' | string;
 
 function ProductsIndexPage() {
   const { addToCart } = useCart();
-  const { category: urlCategory } = Route.useSearch();
+  const routeSearch = Route.useSearch();
   const navigate = useNavigate();
   
   const { data: productTypesData } = useProductTypes();
   const productTypes = productTypesData?.productTypes ?? [];
   
-  const [searchQuery, setSearchQuery] = useState('');
-  const [priceRange, setPriceRange] = useState<PriceRange>('all');
-  const [discountFilter, setDiscountFilter] = useState<DiscountFilter>('all');
-  const [sizeFilter, setSizeFilter] = useState<SizeFilter>('all');
-  const [colorFilter, setColorFilter] = useState<ColorFilter>('all');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>((urlCategory as CategoryFilter) || 'all');
-  const [brandFilter, setBrandFilter] = useState<BrandFilter>('all');
-  const [collectionFilter, setCollectionFilter] = useState<'all' | string>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('relevance');
+  const searchQuery = routeSearch.q ?? "";
+  const priceRange: PriceRange = routeSearch.price ?? "all";
+  const discountFilter: DiscountFilter = routeSearch.discount ?? "all";
+  const sizeFilter: SizeFilter = routeSearch.size ?? "all";
+  const colorFilter: ColorFilter = routeSearch.color ?? "all";
+  const categoryFilter: CategoryFilter = routeSearch.category;
+  const brandFilter: BrandFilter = routeSearch.brand ?? "all";
+  const collectionFilter = routeSearch.collection ?? "all";
+  const sortBy: SortOption = routeSearch.sort ?? "relevance";
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
   
   const productTypeCategoriesForFilter = useMemo(() => [
@@ -93,22 +91,42 @@ function ProductsIndexPage() {
     ...productTypes.map(pt => ({ key: pt.slug, label: pt.label }))
   ], [productTypes]);
   
-  // Update category filter when URL changes
-  useEffect(() => {
-    if (urlCategory && urlCategory !== 'all') {
-      setCategoryFilter(urlCategory as CategoryFilter);
-    } else if (!urlCategory || urlCategory === 'all') {
-      setCategoryFilter('all');
-    }
-  }, [urlCategory]);
-
-  const updateCategoryFilter = (category: CategoryFilter) => {
-    setCategoryFilter(category);
+  const updateFilters = (updates: Partial<ProductsRouteSearch>) => {
     navigate({
       to: "/products",
-      search: getProductsCategorySearch(category),
+      search: getProductsFilterSearch(routeSearch, updates),
+      replace: true,
     });
   };
+
+  const updateCategoryFilter = (category: CategoryFilter) => {
+    navigate({
+      to: "/products",
+      search: getProductsFilterSearch(routeSearch, {
+        category,
+        categoryId: undefined,
+        collection: undefined,
+      }),
+    });
+  };
+
+  const clearFilters = () => {
+    navigate({
+      to: "/products",
+      search: {
+        category: "all",
+      },
+    });
+  };
+
+  const setSearchQuery = (q: string) => updateFilters({ q });
+  const setPriceRange = (price: PriceRange) => updateFilters({ price });
+  const setSizeFilter = (size: SizeFilter) => updateFilters({ size });
+  const setColorFilter = (color: ColorFilter) => updateFilters({ color });
+  const setBrandFilter = (brand: BrandFilter) => updateFilters({ brand });
+  const setCollectionFilter = (collection: string) =>
+    updateFilters({ collection: collection === "all" ? undefined : collection });
+  const setSortBy = (sort: SortOption) => updateFilters({ sort });
   const [sizeModalProduct, setSizeModalProduct] = useState<Product | null>(null);
   const [isCartSidebarOpen, setIsCartSidebarOpen] = useState(false);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -879,17 +897,7 @@ function ProductsIndexPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setSearchQuery("");
-                      setPriceRange("all");
-                      setDiscountFilter("all");
-                      setSizeFilter("all");
-                      setColorFilter("all");
-                      updateCategoryFilter("all");
-                      setBrandFilter("all");
-                      setCollectionFilter('all');
-                      setSortBy("relevance");
-                    }}
+                    onClick={clearFilters}
                     className="w-full px-8 py-3 rounded-lg bg-background/60 backdrop-blur-sm border border-border/60 text-foreground flex items-center justify-center font-semibold text-base hover:bg-[#00EC97] hover:border-[#00EC97] hover:text-black transition-colors"
                   >
                     Clear All
@@ -934,15 +942,7 @@ function ProductsIndexPage() {
             {(searchQuery || priceRange !== "all" || discountFilter !== "all" || sizeFilter !== "all" || colorFilter !== "all" || categoryFilter !== "all" || brandFilter !== "all") && (
                 <Button
                   variant="outline"
-                onClick={() => {
-                  setSearchQuery("");
-                  setPriceRange("all");
-                  setDiscountFilter("all");
-                  setSizeFilter("all");
-                  setColorFilter("all");
-                  updateCategoryFilter("all");
-                  setBrandFilter("all");
-                }}
+                onClick={clearFilters}
                 className="mt-4 border-border/60 hover:border-[#00EC97] hover:text-[#00EC97]"
                 >
                 Clear All Filters
