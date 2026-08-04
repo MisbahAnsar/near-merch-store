@@ -1,8 +1,9 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, ImagePlus, Loader2, Lock, Star, Trash2, Unlock, Upload, GripVertical, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DragDropProvider, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/react";
+import { AlertDialog } from "radix-ui";
 import { useProduct } from "@/integrations/api";
 import { useUpdateProduct, useRequestAssetUpload, useConfirmAssetUpload } from "@/integrations/api/admin";
 import { productKeys } from "@/integrations/api/keys";
@@ -54,6 +55,46 @@ interface VariantPriceDraft {
   sku?: string;
   attributes: Array<{ name: string; value: string }>;
   price: string;
+}
+
+function UnsavedChangesDialog({
+  open,
+  onKeepEditing,
+  onDiscard,
+}: {
+  open: boolean;
+  onKeepEditing: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <AlertDialog.Root open={open}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
+        <AlertDialog.Content className="bg-background fixed top-1/2 left-1/2 z-[90] grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border p-6 shadow-2xl duration-300 sm:max-w-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95">
+          <div className="flex flex-col gap-2 text-center sm:text-left">
+            <AlertDialog.Title className="text-lg leading-none font-semibold">
+              Discard unsaved changes?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="text-muted-foreground text-sm">
+              Your product changes have not been saved. Discarding them cannot be undone.
+            </AlertDialog.Description>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialog.Cancel asChild>
+              <Button type="button" variant="outline" onClick={onKeepEditing}>
+                Keep editing
+              </Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action asChild>
+              <Button type="button" variant="destructive" onClick={onDiscard}>
+                Discard changes
+              </Button>
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
 }
 
 function formatVariantAttributes(attributes: Array<{ name: string; value: string }>) {
@@ -233,13 +274,21 @@ function ProductEditSheet() {
       })
     : "";
   const hasUnsavedChanges = currentHash !== lastSavedHash && initialized;
+  const shouldBlockNavigation = useCallback(
+    () => hasUnsavedChanges,
+    [hasUnsavedChanges],
+  );
+  const blocker = useBlocker({
+    shouldBlockFn: shouldBlockNavigation,
+    withResolver: true,
+    enableBeforeUnload: false,
+  });
 
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault();
-      }
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) event.preventDefault();
     };
+
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
@@ -440,8 +489,9 @@ function ProductEditSheet() {
   }, [updateMutation, productId, name, description, price, priceLocked, variantPrices, images, thumbnailImage, product, queryClient, hasMultipleVariants]);
 
   return (
-    <Sheet open onOpenChange={(open) => { if (!open) handleClose(); }}>
-      <SheetContent side="right" hideCloseButton>
+    <>
+      <Sheet open onOpenChange={(open) => { if (!open) handleClose(); }}>
+        <SheetContent side="right" hideCloseButton>
         {isLoading ? (
           <div className="flex items-center justify-center flex-1">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00EC97]" />
@@ -711,7 +761,17 @@ function ProductEditSheet() {
             </div>
           </>
         ) : null}
-      </SheetContent>
-    </Sheet>
+        </SheetContent>
+      </Sheet>
+      <UnsavedChangesDialog
+        open={blocker.status === "blocked"}
+        onKeepEditing={() => {
+          if (blocker.status === "blocked") blocker.reset();
+        }}
+        onDiscard={() => {
+          if (blocker.status === "blocked") blocker.proceed();
+        }}
+      />
+    </>
   );
 }
