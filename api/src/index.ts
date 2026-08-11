@@ -1032,7 +1032,7 @@ export default createPlugin({
       subscribeOrderStatus: builder.subscribeOrderStatus
         .use(requireAuth)
         .handler(
-        async function* ({ input, signal }) {
+        async function* ({ input, signal, context, errors }) {
           const TERMINAL_STATUSES = [
             "shipped",
             "delivered",
@@ -1059,6 +1059,13 @@ export default createPlugin({
             if (!order) {
               await new Promise((r) => setTimeout(r, POLL_INTERVAL));
               continue;
+            }
+
+            if (order.userId !== context.nearAccountId) {
+              throw errors.FORBIDDEN({
+                message: "You do not have permission to access this order",
+                data: { action: "read" },
+              });
             }
 
             const currentTrackingJson = JSON.stringify(
