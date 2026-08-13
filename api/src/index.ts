@@ -484,11 +484,18 @@ export default createPlugin({
         };
       }),
 
-      getProduct: builder.getProduct.handler(async ({ input, errors }) => {
+      getProduct: builder.getProduct.handler(async ({ input, errors, context }) => {
+        const isAdmin = context?.user?.role === "admin";
         const exit = await managedRuntime.runPromiseExit(
           Effect.gen(function* () {
             const service = yield* ProductService;
-            return yield* service.getProduct(input.id);
+            const result = yield* service.getProduct(input.id);
+            if (!result.product.listed && !isAdmin) {
+              return yield* Effect.fail(
+                new Error(`Product not found: ${input.id}`),
+              );
+            }
+            return result;
           }),
         );
 
@@ -502,7 +509,7 @@ export default createPlugin({
             error.message.includes("Product not found")
           ) {
             throw errors.NOT_FOUND({
-              message: error.message,
+              message: "This product is no longer available.",
               data: { resource: "product", resourceId: input.id },
             });
           }
