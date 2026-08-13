@@ -12,6 +12,7 @@ import {
   type ColumnDef,
   type SortingState,
   type ColumnFiltersState,
+  type PaginationState,
 } from "@tanstack/react-table";
 import {
   Package,
@@ -1041,6 +1042,10 @@ function InventoryManagement() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
   const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
 
   const tableData = useMemo(() => {
@@ -1443,23 +1448,33 @@ function InventoryManagement() {
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getRowId: (row) => row.id,
+    autoResetPageIndex: false,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
+    onPaginationChange: setPagination,
     globalFilterFn: "includesString",
     state: {
       sorting,
       columnFilters,
       globalFilter,
-    },
-    initialState: {
-      pagination: {
-        pageSize: 10,
-      },
+      pagination,
     },
   });
 
   const filteredRowCount = table.getFilteredRowModel().rows.length;
+  const pageCount = table.getPageCount();
+
+  useEffect(() => {
+    const lastPageIndex = Math.max(pageCount - 1, 0);
+
+    setPagination((current) =>
+      current.pageIndex > lastPageIndex
+        ? { ...current, pageIndex: lastPageIndex }
+        : current,
+    );
+  }, [pageCount]);
+
   const currentPageStart =
     filteredRowCount === 0
       ? 0
