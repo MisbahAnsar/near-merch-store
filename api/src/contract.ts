@@ -423,7 +423,8 @@ export const contract = oc.router({
       tags: ["Orders"],
     })
     .input(z.object({ sessionId: z.string() }))
-    .output(eventIterator(OrderStatusEventSchema)),
+    .output(eventIterator(OrderStatusEventSchema))
+    .errors({ FORBIDDEN, UNAUTHORIZED }),
 
   getAllOrders: oc
     .route({
