@@ -356,7 +356,7 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
 
             for (const item of items) {
               const product = yield* productStore.find(item.productId);
-              if (!product) {
+              if (!product || !product.listed) {
                 return yield* Effect.fail(
                   new Error(`Product not found: ${item.productId}`),
                 );
@@ -623,7 +623,7 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
 
             for (const item of items) {
               const product = yield* productStore.find(item.productId);
-              if (!product) {
+              if (!product || !product.listed) {
                 return yield* Effect.fail(
                   new Error(`Product not found: ${item.productId}`),
                 );
