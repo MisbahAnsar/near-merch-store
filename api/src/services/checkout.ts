@@ -10,7 +10,9 @@ import type {
   FulfillmentConfig,
   TaxBreakdown,
   FeeConfig,
+  Product,
   ProductMetadata,
+  ProductVariant,
 } from "../schema";
 import { OrderStore, ProductStore } from "../store";
 import type { CreateOrderItem } from "./fulfillment/schema";
@@ -32,6 +34,37 @@ interface ProviderItemGroup {
   fulfillmentProvider?: string;
   metadata?: ProductMetadata;
   referralAccountId?: string;
+}
+
+function selectCheckoutVariant(
+  product: Product,
+  variantId?: string,
+): Effect.Effect<ProductVariant | undefined, CheckoutError> {
+  const selectedVariant = variantId
+    ? product.variants.find((variant) => variant.id === variantId)
+    : product.variants.find((variant) => variant.availableForSale);
+
+  if (selectedVariant && !selectedVariant.availableForSale) {
+    return Effect.fail(
+      new CheckoutError({
+        code: "VARIANT_UNAVAILABLE",
+        productId: product.id,
+        cause: new Error(`Variant is unavailable: ${selectedVariant.id}`),
+      }),
+    );
+  }
+
+  if (!variantId && product.variants.length > 0 && !selectedVariant) {
+    return Effect.fail(
+      new CheckoutError({
+        code: "VARIANT_UNAVAILABLE",
+        productId: product.id,
+        cause: new Error(`No variants are available for ${product.title}`),
+      }),
+    );
+  }
+
+  return Effect.succeed(selectedVariant);
 }
 
 function getManualNotificationConfig(metadata?: ProductMetadata) {
@@ -362,9 +395,10 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
                 );
               }
 
-              const selectedVariant = item.variantId
-                ? product.variants.find((v) => v.id === item.variantId)
-                : product.variants[0];
+              const selectedVariant = yield* selectCheckoutVariant(
+                product,
+                item.variantId,
+              );
 
               const unitPrice = selectedVariant?.price ?? product.price;
               const itemSubtotal = unitPrice * item.quantity;
@@ -629,9 +663,10 @@ export const CheckoutServiceLive = (runtime: MarketplaceRuntime) =>
                 );
               }
 
-              const selectedVariant = item.variantId
-                ? product.variants.find((v) => v.id === item.variantId)
-                : product.variants[0];
+              const selectedVariant = yield* selectCheckoutVariant(
+                product,
+                item.variantId,
+              );
 
               const unitPrice = selectedVariant?.price ?? product.price;
               const itemSubtotal = unitPrice * item.quantity;
