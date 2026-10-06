@@ -1,0 +1,32 @@
+import { useSiteConfig } from "@/integrations/api/site-config";
+
+const DEFAULT_MESSAGE =
+  "Site under maintenance. Purchases are temporarily disabled.";
+
+export function MaintenanceBanner() {
+  const { data } = useSiteConfig();
+
+  if (!data?.maintenance.enabled) {
+    return null;
+  }
+
+  return (
+    <div className="relative z-[60] w-full bg-foreground text-background">
+      <div className="container-app mx-auto px-4 md:px-8 lg:px-16 py-3 text-center text-sm font-medium">
+        <p>{data.maintenance.message || DEFAULT_MESSAGE}</p>
+        <p>
+          Please reach out to support on{" "}
+          <a
+            href="https://t.me/nearmerch"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:opacity-80"
+          >
+            Telegram
+          </a>{" "}
+          if issues arise.
+        </p>
+      </div>
+    </div>
+  );
+}

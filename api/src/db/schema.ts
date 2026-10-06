@@ -15,6 +15,7 @@ import type {
   ProductOption,
   ProductMetadata,
   ManualProviderSettings as ManualProviderSettingsType,
+  SiteSettings,
 } from "../schema";
 import type { FulfillmentFile } from "../services/fulfillment/schema";
 
@@ -426,6 +427,17 @@ export const providerTestStates = pgTable(
 );
 
 
+
+export const siteSettings = pgTable("site_settings", {
+  id: text("id").primaryKey(),
+  settings: jsonb("settings").$type<SiteSettings>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+});
 
 export const merchBoxRequests = pgTable(
   "merch_box_requests",

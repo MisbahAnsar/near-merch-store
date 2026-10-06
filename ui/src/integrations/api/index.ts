@@ -29,3 +29,5 @@ export { useCategories, type Category, } from "./categories";
 export { useProviderFieldConfigs, type ProviderConfig, type PrintfulWebhookEventType, type ProviderFieldConfigs, } from "./providers";
 
 export { useSubscribeNewsletter, type SubscribeNewsletterOutput, } from "./newsletter";
+
+export { useSiteConfig, useSetMaintenanceMode, type SiteConfig, } from "./site-config";
