@@ -43,6 +43,7 @@ import { isCountrySupported, isStateSupported } from '@/lib/validation/address-r
 import {
   getPurchaseGatePluginId,
   usePurchaseGateAccessMap,
+  useSiteConfig,
   type ProductMetadata,
   type PurchaseGatePluginId,
 } from '@/integrations/api';
@@ -104,6 +105,8 @@ function CheckoutPage() {
   );
   const { accessByPlugin, isLoading: isPurchaseGateLoading } =
     usePurchaseGateAccessMap(gatedPluginIds, nearAccountId);
+  const { data: siteConfig } = useSiteConfig();
+  const isMaintenance = siteConfig?.maintenance.enabled === true;
   const providers = Array.from(
     new Set(
       cartItems
@@ -288,6 +291,11 @@ function CheckoutPage() {
   };
 
   const handlePayWithPing = async () => {
+    if (isMaintenance) {
+      toast.error('Purchases are temporarily disabled');
+      return;
+    }
+
     const { data: session } = await authClient.getSession();
     if (!session?.user) {
       navigate({
@@ -1243,6 +1251,9 @@ function CheckoutPage() {
                     const hasAcceptedTerms = acceptedTerms;
                     
                     const getDisabledState = () => {
+                      if (isMaintenance) {
+                        return { disabled: true, reason: 'Purchases are temporarily disabled' };
+                      }
                       if (!isFormValid) {
                         return { disabled: true, reason: 'Complete all required fields' };
                       }

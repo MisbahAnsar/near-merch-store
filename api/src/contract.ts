@@ -29,6 +29,7 @@ import {
   QuoteItemInputSchema,
   QuoteOutputSchema,
   ShippingAddressSchema,
+  SiteConfigSchema,
   WebhookResponseSchema,
   UpdateOrderStatusInputSchema,
   UpdateOrderStatusOutputSchema,
@@ -56,6 +57,35 @@ export const contract = oc.router({
         timestamp: z.string().datetime(),
       }),
     ),
+
+  getSiteConfig: oc
+    .route({
+      method: "GET",
+      path: "/site-config",
+      summary: "Get public site configuration",
+      description:
+        "Returns public site settings including maintenance mode status.",
+      tags: ["Health"],
+    })
+    .output(SiteConfigSchema),
+
+  setMaintenanceMode: oc
+    .route({
+      method: "POST",
+      path: "/admin/maintenance",
+      summary: "Set maintenance mode (Admin)",
+      description:
+        "Enables or disables storefront maintenance mode without a redeploy.",
+      tags: ["Admin"],
+    })
+    .input(
+      z.object({
+        enabled: z.boolean(),
+        message: z.string().max(500).optional(),
+      }),
+    )
+    .output(SiteConfigSchema)
+    .errors({ UNAUTHORIZED }),
 
   subscribeNewsletter: oc
     .route({
@@ -348,7 +378,7 @@ export const contract = oc.router({
     })
     .input(CreateCheckoutInputSchema)
     .output(CreateCheckoutOutputSchema)
-    .errors({ BAD_REQUEST, UNAUTHORIZED }),
+    .errors({ BAD_REQUEST, UNAUTHORIZED, FORBIDDEN }),
 
   quote: oc
     .route({

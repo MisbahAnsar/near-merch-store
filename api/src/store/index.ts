@@ -49,6 +49,12 @@ export {
   ProviderTestStateStoreLive,
 } from "./provider-tests";
 
+export {
+  SiteSettingsStore,
+  SiteSettingsStoreLive,
+  DEFAULT_SITE_SETTINGS,
+} from "./site-settings";
+
 export type {
   ProductCriteria,
   ProductWithImages,

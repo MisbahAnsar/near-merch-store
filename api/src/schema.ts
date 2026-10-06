@@ -379,6 +379,21 @@ export type SubscribeNewsletterOutput = z.infer<
   typeof SubscribeNewsletterOutputSchema
 >;
 
+export const MaintenanceConfigSchema = z.object({
+  enabled: z.boolean(),
+  message: z.string().max(500).optional(),
+});
+
+export const SiteSettingsSchema = z.object({
+  maintenance: MaintenanceConfigSchema,
+});
+
+export const SiteConfigSchema = SiteSettingsSchema;
+
+export type MaintenanceConfig = z.infer<typeof MaintenanceConfigSchema>;
+export type SiteSettings = z.infer<typeof SiteSettingsSchema>;
+export type SiteConfig = z.infer<typeof SiteConfigSchema>;
+
 export const ReturnAddressSchema = ShippingAddressSchema;
 
 export type ReturnAddress = z.infer<typeof ReturnAddressSchema>;

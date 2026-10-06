@@ -1,8 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { useProducts } from "@/integrations/api";
 import { useSyncProducts } from "@/integrations/api/admin";
+import { useSetMaintenanceMode, useSiteConfig } from "@/integrations/api/site-config";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/_marketplace/_authenticated/_admin/dashboard/")({
   component: DashboardOverview,
@@ -58,6 +63,8 @@ function DashboardOverview() {
         </div>
       </div>
 
+      <MaintenanceModeCard />
+
       {/* Sync Progress */}
       {isSyncing && progress && (
         <div className="rounded-2xl bg-background border border-border/60 p-4">
@@ -112,6 +119,87 @@ function DashboardOverview() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MaintenanceModeCard() {
+  const { data, isLoading } = useSiteConfig();
+  const mutation = useSetMaintenanceMode();
+  const enabled = data?.maintenance.enabled === true;
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setMessage(data?.maintenance.message ?? "");
+  }, [data?.maintenance.message]);
+
+  const save = (nextEnabled: boolean, nextMessage = message) => {
+    mutation.mutate(
+      {
+        enabled: nextEnabled,
+        message: nextMessage.trim(),
+      },
+      {
+        onSuccess: () => {
+          toast.success(
+            nextEnabled !== enabled
+              ? nextEnabled
+                ? "Maintenance mode enabled"
+                : "Maintenance mode disabled"
+              : "Maintenance settings saved",
+          );
+        },
+        onError: (error) => {
+          toast.error(error.message || "Failed to update maintenance mode");
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="rounded-2xl bg-background border border-border/60 p-4 space-y-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-sm font-medium text-foreground">Maintenance mode</h3>
+          <p className="text-sm text-foreground/90 dark:text-muted-foreground">
+            Disable purchases and show a storefront banner without redeploying.
+          </p>
+        </div>
+        <p className="text-sm font-semibold">
+          {isLoading ? "Loading..." : enabled ? "Enabled" : "Disabled"}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="maintenance-enabled"
+          checked={enabled}
+          disabled={isLoading || mutation.isPending}
+          onCheckedChange={(checked) => save(checked === true)}
+        />
+        <Label htmlFor="maintenance-enabled">Enable maintenance mode</Label>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="maintenance-message">Custom banner message (optional)</Label>
+        <Input
+          id="maintenance-message"
+          value={message}
+          onChange={(event) => setMessage(event.target.value)}
+          placeholder="Leave blank to use the default banner message"
+          maxLength={500}
+          disabled={isLoading || mutation.isPending}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => save(enabled)}
+        disabled={isLoading || mutation.isPending}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-foreground/10 text-foreground font-semibold text-sm hover:bg-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {mutation.isPending ? "Saving..." : "Save message"}
+      </button>
     </div>
   );
 }

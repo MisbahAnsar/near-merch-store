@@ -31,7 +31,7 @@ import { StripeService } from './services/stripe';
 import { NewsletterService, NewsletterServiceLive } from './services/newsletter';
 import { MerchBoxService, MerchBoxServiceLive } from './services/merch-box';
 import { MerchBoxStoreLive } from './store/merch-box';
-import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive } from './store';
+import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive, SiteSettingsStore, SiteSettingsStoreLive } from './store';
 import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
 import { parsePrintfulWebhook, verifyPrintfulWebhookSignature } from './services/fulfillment/printful/webhook';
@@ -189,6 +189,7 @@ export default createPlugin({
           NewsletterStoreLive,
           AssetStoreLive,
           MerchBoxStoreLive,
+          SiteSettingsStoreLive,
         ),
         dbLayer,
       );
@@ -322,6 +323,50 @@ export default createPlugin({
           timestamp: new Date().toISOString(),
         };
       }),
+
+      getSiteConfig: builder.getSiteConfig.handler(async () => {
+        const exit = await managedRuntime.runPromiseExit(
+          Effect.gen(function* () {
+            const store = yield* SiteSettingsStore;
+            return yield* store.getSettings();
+          }),
+        );
+
+        if (Exit.isFailure(exit)) {
+          const error = Cause.squash(exit.cause);
+          throw new ORPCError("INTERNAL_SERVER_ERROR", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        return exit.value;
+      }),
+
+      setMaintenanceMode: builder.setMaintenanceMode
+        .use(requireAdmin)
+        .handler(async ({ input }) => {
+          const exit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const store = yield* SiteSettingsStore;
+              return yield* store.setMaintenanceMode({
+                enabled: input.enabled,
+                message: input.message,
+              });
+            }),
+          );
+
+          if (Exit.isFailure(exit)) {
+            const error = Cause.squash(exit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            throw new ORPCError("INTERNAL_SERVER_ERROR", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return exit.value;
+        }),
 
       subscribeNewsletter: builder.subscribeNewsletter.handler(
         async ({ input }) => {
@@ -805,7 +850,33 @@ export default createPlugin({
       ),
       createCheckout: builder.createCheckout
         .use(requireAuth)
-        .handler(async ({ input, context }) => {
+        .handler(async ({ input, context, errors }) => {
+          const maintenanceExit = await managedRuntime.runPromiseExit(
+            Effect.gen(function* () {
+              const store = yield* SiteSettingsStore;
+              return yield* store.getSettings();
+            }),
+          );
+
+          if (Exit.isFailure(maintenanceExit)) {
+            const error = Cause.squash(maintenanceExit.cause);
+            if (error instanceof ORPCError) {
+              throw error;
+            }
+            throw new ORPCError("INTERNAL_SERVER_ERROR", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          if (maintenanceExit.value.maintenance.enabled) {
+            throw errors.FORBIDDEN({
+              message:
+                maintenanceExit.value.maintenance.message?.trim() ||
+                "Site under maintenance. Purchases are temporarily disabled.",
+              data: { action: "checkout" },
+            });
+          }
+
           const gatedPluginsExit = await managedRuntime.runPromiseExit(
             Effect.gen(function* () {
               const productStore = yield* ProductStore;

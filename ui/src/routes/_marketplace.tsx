@@ -3,6 +3,7 @@ import { MarketplaceHeader } from "@/components/marketplace-header";
 import { MarketplaceFooter } from "@/components/marketplace-footer";
 import { MerchBoxFab } from "@/components/merch-box-fab";
 import { VideoBackground } from "@/components/video-background";
+import { MaintenanceBanner } from "@/components/marketplace/maintenance-banner";
 
 export const Route = createFileRoute("/_marketplace")({
   component: MarketplaceLayout,
@@ -13,11 +14,15 @@ export const Route = createFileRoute("/_marketplace")({
 function MarketplaceLayout() {
   return (
     <div className="min-h-screen w-full relative bg-background flex flex-col">
-      <MarketplaceHeader />
+      <MaintenanceBanner />
 
-      <main className="border-0 relative bg-background flex-1">
-        <Outlet />
-      </main>
+      <div className="relative flex-1 flex flex-col">
+        <MarketplaceHeader />
+
+        <main className="border-0 relative bg-background flex-1">
+          <Outlet />
+        </main>
+      </div>
 
       <MarketplaceFooter />
       <MerchBoxFab />

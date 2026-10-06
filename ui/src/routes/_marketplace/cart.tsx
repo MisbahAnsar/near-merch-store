@@ -9,6 +9,7 @@ import {
 import {
   getPurchaseGatePluginId,
   usePurchaseGateAccessMap,
+  useSiteConfig,
   type ProductMetadata,
   type PurchaseGatePluginId,
 } from "@/integrations/api";
@@ -35,6 +36,8 @@ function CartPage() {
   );
   const { accessByPlugin, isLoading: isPurchaseGateLoading } =
     usePurchaseGateAccessMap(gatedPluginIds, nearAccountId);
+  const { data: siteConfig } = useSiteConfig();
+  const isMaintenance = siteConfig?.maintenance.enabled === true;
   const blockedItems = cartItems.filter((item) => {
     const pluginId = getPurchaseGatePluginId(
       item.product.metadata as ProductMetadata | undefined,
@@ -229,7 +232,15 @@ function CartPage() {
                       Continue Shopping
                     </button>
                   </Link>
-                  {hasBlockedItems ? (
+                  {isMaintenance ? (
+                    <button
+                      className="w-full px-8 py-3 rounded-lg bg-muted text-muted-foreground font-semibold text-base cursor-not-allowed"
+                      disabled
+                      data-testid="checkout-button"
+                    >
+                      Checkout
+                    </button>
+                  ) : hasBlockedItems ? (
                     <button
                       className="w-full px-8 py-3 rounded-lg bg-muted text-muted-foreground font-semibold text-base cursor-not-allowed"
                       disabled
