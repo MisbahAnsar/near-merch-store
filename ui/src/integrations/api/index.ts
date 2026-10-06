@@ -30,4 +30,4 @@ export { useProviderFieldConfigs, type ProviderConfig, type PrintfulWebhookEvent
 
 export { useSubscribeNewsletter, type SubscribeNewsletterOutput, } from "./newsletter";
 
-export { useSiteConfig, useSetMaintenanceMode, DEFAULT_MAINTENANCE_MESSAGE, MAINTENANCE_TELEGRAM_URL, type SiteConfig, } from "./site-config";
+export { useSiteConfig, useSetMaintenanceMode, type SiteConfig, } from "./site-config";

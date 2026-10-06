@@ -1,11 +1,6 @@
 import { apiClient } from "@/utils/orpc";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-export const DEFAULT_MAINTENANCE_MESSAGE =
-  "Site under maintenance. Purchases are temporarily disabled — please reach out to support on Telegram if issues arise.";
-
-export const MAINTENANCE_TELEGRAM_URL = "https://t.me/nearmerch";
-
 export const siteConfigKeys = {
   all: ["site-config"] as const,
 };
@@ -17,7 +12,6 @@ export function useSiteConfig() {
     queryKey: siteConfigKeys.all,
     queryFn: () => apiClient.getSiteConfig(),
     staleTime: 30_000,
-    refetchInterval: 30_000,
   });
 }
 

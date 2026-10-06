@@ -291,11 +291,6 @@ function CheckoutPage() {
   };
 
   const handlePayWithPing = async () => {
-    if (isMaintenance) {
-      toast.error('Purchases are temporarily disabled');
-      return;
-    }
-
     const { data: session } = await authClient.getSession();
     if (!session?.user) {
       navigate({
