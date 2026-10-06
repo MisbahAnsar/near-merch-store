@@ -53,6 +53,19 @@ describe('maintenance mode', () => {
     });
   });
 
+  it('keeps maintenance enabled if stored settings fail schema validation', async () => {
+    const db = getTestDb();
+    await db.insert(schema.siteSettings).values({
+      id: 'default',
+      settings: { maintenance: { enabled: true, message: 123 } } as never,
+    });
+
+    const client = await getPluginClient();
+    await expect(client.getSiteConfig()).resolves.toEqual({
+      maintenance: { enabled: true },
+    });
+  });
+
   it('requires admin authentication to change maintenance mode', async () => {
     const client = await getPluginClient({ nearAccountId: TEST_USER });
 

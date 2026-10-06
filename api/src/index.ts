@@ -31,7 +31,7 @@ import { StripeService } from './services/stripe';
 import { NewsletterService, NewsletterServiceLive } from './services/newsletter';
 import { MerchBoxService, MerchBoxServiceLive } from './services/merch-box';
 import { MerchBoxStoreLive } from './store/merch-box';
-import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive, SiteSettingsStore, SiteSettingsStoreLive } from './store';
+import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive, SiteSettingsStore, SiteSettingsStoreLive, DEFAULT_SITE_SETTINGS } from './store';
 import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
 import { parsePrintfulWebhook, verifyPrintfulWebhookSignature } from './services/fulfillment/printful/webhook';
@@ -334,9 +334,8 @@ export default createPlugin({
 
         if (Exit.isFailure(exit)) {
           const error = Cause.squash(exit.cause);
-          throw new ORPCError("INTERNAL_SERVER_ERROR", {
-            message: error instanceof Error ? error.message : String(error),
-          });
+          console.error("[getSiteConfig] Failed to load site settings:", error);
+          return DEFAULT_SITE_SETTINGS;
         }
 
         return exit.value;
@@ -860,15 +859,11 @@ export default createPlugin({
 
           if (Exit.isFailure(maintenanceExit)) {
             const error = Cause.squash(maintenanceExit.cause);
-            if (error instanceof ORPCError) {
-              throw error;
-            }
-            throw new ORPCError("INTERNAL_SERVER_ERROR", {
-              message: error instanceof Error ? error.message : String(error),
-            });
-          }
-
-          if (maintenanceExit.value.maintenance.enabled) {
+            console.error(
+              "[createCheckout] Failed to load site settings; continuing without maintenance block:",
+              error,
+            );
+          } else if (maintenanceExit.value.maintenance.enabled) {
             throw errors.FORBIDDEN({
               message:
                 maintenanceExit.value.maintenance.message?.trim() ||

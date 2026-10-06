@@ -23,7 +23,23 @@ export class SiteSettingsStore extends Context.Tag('SiteSettingsStore')<
 
 function parseSettings(value: unknown): SiteSettings {
   const parsed = SiteSettingsSchema.safeParse(value);
-  return parsed.success ? parsed.data : DEFAULT_SITE_SETTINGS;
+  if (parsed.success) {
+    return parsed.data;
+  }
+
+  console.error(
+    '[SiteSettingsStore] Invalid site settings payload, using fallback:',
+    parsed.error.issues,
+  );
+  const enabled =
+    typeof value === 'object' &&
+    value !== null &&
+    'maintenance' in value &&
+    typeof (value as { maintenance?: { enabled?: unknown } }).maintenance?.enabled === 'boolean'
+      ? Boolean((value as { maintenance: { enabled: boolean } }).maintenance.enabled)
+      : false;
+
+  return { maintenance: { enabled } };
 }
 
 function nextSettings(
@@ -52,17 +68,22 @@ export const SiteSettingsStoreLive = Layer.effect(
     const getSettings = () =>
       Effect.tryPromise({
         try: async () => {
-          const results = await db
-            .select()
-            .from(schema.siteSettings)
-            .where(eq(schema.siteSettings.id, SITE_SETTINGS_ID))
-            .limit(1);
+          try {
+            const results = await db
+              .select()
+              .from(schema.siteSettings)
+              .where(eq(schema.siteSettings.id, SITE_SETTINGS_ID))
+              .limit(1);
 
-          if (results.length === 0) {
+            if (results.length === 0) {
+              return DEFAULT_SITE_SETTINGS;
+            }
+
+            return parseSettings(results[0]!.settings);
+          } catch (error) {
+            console.error('[SiteSettingsStore] Failed to get site settings:', error);
             return DEFAULT_SITE_SETTINGS;
           }
-
-          return parseSettings(results[0]!.settings);
         },
         catch: (error) => new Error(`Failed to get site settings: ${error}`),
       });
