@@ -102,6 +102,27 @@ describe('maintenance mode', () => {
     });
   });
 
+  it('lets an admin set, preserve, and clear a custom banner message', async () => {
+    const adminClient = await getPluginClient(ADMIN_CONTEXT);
+
+    await adminClient.setMaintenanceMode({ enabled: true, message: 'Back soon' });
+    await expect(adminClient.getSiteConfig()).resolves.toEqual({
+      maintenance: { enabled: true, message: 'Back soon' },
+    });
+
+    // Toggling without a message preserves the stored one
+    await adminClient.setMaintenanceMode({ enabled: false });
+    await expect(adminClient.getSiteConfig()).resolves.toEqual({
+      maintenance: { enabled: false, message: 'Back soon' },
+    });
+
+    // An empty message clears it
+    await adminClient.setMaintenanceMode({ enabled: false, message: '' });
+    await expect(adminClient.getSiteConfig()).resolves.toEqual({
+      maintenance: { enabled: false },
+    });
+  });
+
   it('allows checkout after an admin disables maintenance mode', async () => {
     const adminClient = await getPluginClient(ADMIN_CONTEXT);
     const userClient = await getPluginClient({ nearAccountId: TEST_USER });

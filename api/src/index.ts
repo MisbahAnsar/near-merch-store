@@ -31,7 +31,7 @@ import { StripeService } from './services/stripe';
 import { NewsletterService, NewsletterServiceLive } from './services/newsletter';
 import { MerchBoxService, MerchBoxServiceLive } from './services/merch-box';
 import { MerchBoxStoreLive } from './store/merch-box';
-import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive, SiteSettingsStore, SiteSettingsStoreLive } from './store';
+import { DatabaseLive, OrderStore, OrderStoreLive, ProductStore, ProductStoreLive, ProductTypeStore, ProductTypeStoreLive, CollectionStoreLive, AssetStoreLive, ProviderTestStateStore, ProviderTestStateStoreLive, SiteSettingsStore, SiteSettingsStoreLive, DEFAULT_SITE_SETTINGS } from './store';
 import { NewsletterStoreLive } from './store/newsletter';
 import { ProviderConfigStore, ProviderConfigStoreLive } from './store/providers';
 import { parsePrintfulWebhook, verifyPrintfulWebhookSignature } from './services/fulfillment/printful/webhook';
@@ -333,10 +333,13 @@ export default createPlugin({
         );
 
         if (Exit.isFailure(exit)) {
+          // Fail open: a config read failure must never take the storefront down.
           const error = Cause.squash(exit.cause);
-          throw new ORPCError("INTERNAL_SERVER_ERROR", {
-            message: error instanceof Error ? error.message : String(error),
-          });
+          console.error(
+            "[getSiteConfig] Failed to read site settings, reporting defaults:",
+            error instanceof Error ? error.message : String(error),
+          );
+          return DEFAULT_SITE_SETTINGS;
         }
 
         return exit.value;
@@ -858,21 +861,20 @@ export default createPlugin({
             }),
           );
 
-          if (Exit.isFailure(maintenanceExit)) {
-            const error = Cause.squash(maintenanceExit.cause);
-            if (error instanceof ORPCError) {
-              throw error;
+          if (Exit.isSuccess(maintenanceExit)) {
+            if (maintenanceExit.value.maintenance.enabled) {
+              throw errors.FORBIDDEN({
+                message: "Site under maintenance. Purchases are temporarily disabled.",
+                data: { action: "checkout" },
+              });
             }
-            throw new ORPCError("INTERNAL_SERVER_ERROR", {
-              message: error instanceof Error ? error.message : String(error),
-            });
-          }
-
-          if (maintenanceExit.value.maintenance.enabled) {
-            throw errors.FORBIDDEN({
-              message: "Site under maintenance. Purchases are temporarily disabled.",
-              data: { action: "checkout" },
-            });
+          } else {
+            // Fail open: a config read failure must not block checkout on its own.
+            const error = Cause.squash(maintenanceExit.cause);
+            console.error(
+              "[createCheckout] Failed to read maintenance settings, allowing checkout:",
+              error instanceof Error ? error.message : String(error),
+            );
           }
 
           const gatedPluginsExit = await managedRuntime.runPromiseExit(

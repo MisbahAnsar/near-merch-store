@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { Context, Effect, Layer } from 'every-plugin/effect';
 import * as schema from '../db/schema';
 import { SiteSettingsSchema, type SiteSettings } from '../schema';
@@ -24,24 +24,6 @@ export class SiteSettingsStore extends Context.Tag('SiteSettingsStore')<
 function parseSettings(value: unknown): SiteSettings {
   const parsed = SiteSettingsSchema.safeParse(value);
   return parsed.success ? parsed.data : DEFAULT_SITE_SETTINGS;
-}
-
-function nextSettings(
-  current: SiteSettings,
-  input: { enabled: boolean; message?: string },
-): SiteSettings {
-  const maintenance: SiteSettings['maintenance'] = { enabled: input.enabled };
-
-  if (input.message !== undefined) {
-    const trimmed = input.message.trim();
-    if (trimmed) {
-      maintenance.message = trimmed;
-    }
-  } else if (current.maintenance.message) {
-    maintenance.message = current.maintenance.message;
-  }
-
-  return { maintenance };
 }
 
 export const SiteSettingsStoreLive = Layer.effect(
@@ -70,34 +52,44 @@ export const SiteSettingsStoreLive = Layer.effect(
     return {
       getSettings,
 
+      // Single-statement upsert so concurrent admin toggles cannot lose writes:
+      // enabled always comes from the input; an omitted message preserves the
+      // stored one via fallback inside the SQL itself.
       setMaintenanceMode: (input) =>
-        Effect.gen(function* () {
-          const current = yield* getSettings();
-          const settings = nextSettings(current, input);
-          const now = new Date();
+        Effect.tryPromise({
+          try: async () => {
+            // Explicit message (including empty string) replaces the stored one;
+            // undefined preserves it.
+            const explicitMessageSql = sql`${
+              input.message !== undefined ? input.message.trim() || null : null
+            }::text`;
+            const preservedMessageSql = sql`nullif(jsonb_extract_path_text(${schema.siteSettings.settings}, 'maintenance', 'message'), '')::text`;
+            const messageSql =
+              input.message !== undefined ? explicitMessageSql : preservedMessageSql;
 
-          yield* Effect.tryPromise({
-            try: async () => {
-              await db
-                .insert(schema.siteSettings)
-                .values({
-                  id: SITE_SETTINGS_ID,
-                  settings,
-                  createdAt: now,
-                  updatedAt: now,
-                })
-                .onConflictDoUpdate({
-                  target: schema.siteSettings.id,
-                  set: {
-                    settings,
-                    updatedAt: now,
-                  },
-                });
-            },
-            catch: (error) => new Error(`Failed to set maintenance mode: ${error}`),
-          });
+            const rows = await db
+              .insert(schema.siteSettings)
+              .values({
+                id: SITE_SETTINGS_ID,
+                settings: sql`jsonb_strip_nulls(jsonb_build_object('maintenance', jsonb_build_object('enabled', ${input.enabled}::boolean, 'message', ${explicitMessageSql})))`,
+                createdAt: new Date(),
+              })
+              .onConflictDoUpdate({
+                target: schema.siteSettings.id,
+                set: {
+                  settings: sql`jsonb_strip_nulls(jsonb_build_object('maintenance', jsonb_build_object('enabled', ${input.enabled}::boolean, 'message', ${messageSql})))`,
+                  updatedAt: new Date(),
+                },
+              })
+              .returning({ settings: schema.siteSettings.settings });
 
-          return settings;
+            if (rows.length === 0) {
+              throw new Error('Site settings upsert returned no rows');
+            }
+
+            return parseSettings(rows[0]!.settings);
+          },
+          catch: (error) => new Error(`Failed to set maintenance mode: ${error}`),
         }),
     };
   }),

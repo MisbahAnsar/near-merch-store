@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useProducts } from "@/integrations/api";
 import { useSyncProducts } from "@/integrations/api/admin";
 import { useSetMaintenanceMode, useSiteConfig } from "@/integrations/api/site-config";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/_marketplace/_authenticated/_admin/dashboard/")({
@@ -126,6 +128,25 @@ function MaintenanceModeCard() {
   const { data, isLoading } = useSiteConfig();
   const mutation = useSetMaintenanceMode();
   const enabled = data?.maintenance.enabled === true;
+  const [messageDraft, setMessageDraft] = useState("");
+
+  useEffect(() => {
+    if (data) {
+      setMessageDraft(data.maintenance.message ?? "");
+    }
+  }, [data]);
+
+  const saveMessage = () => {
+    mutation.mutate(
+      { enabled, message: messageDraft },
+      {
+        onSuccess: () => toast.success("Maintenance message saved"),
+        onError: (error) => {
+          toast.error(error.message || "Failed to update maintenance mode");
+        },
+      },
+    );
+  };
 
   return (
     <div className="rounded-2xl bg-background border border-border/60 p-4 space-y-3">
@@ -160,6 +181,28 @@ function MaintenanceModeCard() {
           }}
         />
         <Label htmlFor="maintenance-enabled">Enable maintenance mode</Label>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="maintenance-message">Banner message (optional)</Label>
+        <div className="flex gap-2">
+          <Input
+            id="maintenance-message"
+            placeholder="Site under maintenance. Purchases are temporarily disabled."
+            value={messageDraft}
+            maxLength={500}
+            disabled={isLoading || mutation.isPending}
+            onChange={(event) => setMessageDraft(event.target.value)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isLoading || mutation.isPending || messageDraft === (data?.maintenance.message ?? "")}
+            onClick={saveMessage}
+          >
+            Save
+          </Button>
+        </div>
       </div>
     </div>
   );

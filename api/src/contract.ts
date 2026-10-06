@@ -29,7 +29,7 @@ import {
   QuoteItemInputSchema,
   QuoteOutputSchema,
   ShippingAddressSchema,
-  SiteConfigSchema,
+  SiteSettingsSchema,
   WebhookResponseSchema,
   UpdateOrderStatusInputSchema,
   UpdateOrderStatusOutputSchema,
@@ -67,7 +67,7 @@ export const contract = oc.router({
         "Returns public site settings including maintenance mode status.",
       tags: ["Health"],
     })
-    .output(SiteConfigSchema),
+    .output(SiteSettingsSchema),
 
   setMaintenanceMode: oc
     .route({
@@ -84,8 +84,8 @@ export const contract = oc.router({
         message: z.string().max(500).optional(),
       }),
     )
-    .output(SiteConfigSchema)
-    .errors({ UNAUTHORIZED }),
+    .output(SiteSettingsSchema)
+    .errors({ UNAUTHORIZED, FORBIDDEN }),
 
   subscribeNewsletter: oc
     .route({

@@ -232,21 +232,17 @@ function CartPage() {
                       Continue Shopping
                     </button>
                   </Link>
-                  {isMaintenance ? (
+                  {isMaintenance || hasBlockedItems ? (
                     <button
                       className="w-full px-8 py-3 rounded-lg bg-muted text-muted-foreground font-semibold text-base cursor-not-allowed"
                       disabled
                       data-testid="checkout-button"
                     >
-                      Checkout
-                    </button>
-                  ) : hasBlockedItems ? (
-                    <button
-                      className="w-full px-8 py-3 rounded-lg bg-muted text-muted-foreground font-semibold text-base cursor-not-allowed"
-                      disabled
-                      data-testid="checkout-button"
-                    >
-                      {isPurchaseGateLoading ? "Checking Access..." : "Checkout Locked"}
+                      {isMaintenance
+                        ? "Purchases Temporarily Disabled"
+                        : isPurchaseGateLoading
+                          ? "Checking Access..."
+                          : "Checkout Locked"}
                     </button>
                   ) : (
                     <Link to="/checkout" data-testid="checkout-link" className="w-full">
