@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  findVariantForSelection,
   getAvailableSizesForColor,
   getVariantImageUrl,
   resolveSelectedSizeForColor,
@@ -25,7 +26,7 @@ const variants = [
 ];
 
 describe("product option utilities", () => {
-  it("resolves an unavailable selected size to the first available size for the selected color", () => {
+  it("does not substitute another size when the selected size is unavailable for the color", () => {
     const availableSizes = getAvailableSizesForColor({
       sizes: ["S", "M"],
       variants,
@@ -34,7 +35,24 @@ describe("product option utilities", () => {
     });
 
     expect(availableSizes).toEqual(["S"]);
-    expect(resolveSelectedSizeForColor("M", availableSizes)).toBe("S");
+    expect(resolveSelectedSizeForColor("M", availableSizes)).toBe("");
+    expect(resolveSelectedSizeForColor("S", availableSizes)).toBe("S");
+    expect(
+      findVariantForSelection(variants, {
+        selectedColor: "Blue Jean",
+        selectedSize: "M",
+        hasColorOptions: true,
+        hasSizeOptions: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      findVariantForSelection(variants, {
+        selectedColor: "Blue Jean",
+        selectedSize: "S",
+        hasColorOptions: true,
+        hasSizeOptions: true,
+      })?.id,
+    ).toBe("blue-jean-s");
   });
 
   it("resolves variant images from local Printful image ids when variantIds are missing", () => {

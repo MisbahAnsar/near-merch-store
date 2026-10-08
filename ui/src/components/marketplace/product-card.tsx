@@ -8,7 +8,6 @@ import {
   type Product,
   usePurchaseGateAccess,
   useSuspenseProduct,
-  requiresSize,
   type ProductMetadata,
 } from "@/integrations/api";
 import { useResolvedAssetUrl } from "@/lib/asset-url";
@@ -19,13 +18,17 @@ import React, { useCallback, useState, useEffect } from "react";
 import { useCartSidebarStore } from "@/stores/cart-sidebar-store";
 import {
   COLOR_MAP,
+  findVariantForSelection,
   getAvailableSizesForColor,
   getAttributeHex,
+  getInitialSizeForColor,
   getOptionValue,
+  getUnavailableCombinationMessage,
   getVariantImageUrl,
   resolveSelectedSizeForColor,
 } from "@/lib/product-utils";
 import { getLowestVariantPrice } from "@/lib/product-price";
+import { toast } from "sonner";
 
 function getTotalFeePercentage(metadata: ProductMetadata | undefined): number {
   if (!metadata?.fees?.length) return 0;
@@ -183,15 +186,21 @@ function VerticalProductLayout({
   const sizeOption = product?.options?.find((opt) => opt.name === "Size");
   const orderedColors = colorOption?.values || [];
   const orderedSizes = sizeOption?.values || [];
-  const needsSize = product ? requiresSize(product.collections) : false;
   const availableSizes = orderedSizes.length > 0 ? orderedSizes : ["N/A"];
   const availableVariants = product?.variants || [];
   const displayPrice = priceOverride ?? getLowestVariantPrice(product);
 
   useEffect(() => {
     if (isExpanded && product) {
-      setSelectedColor(orderedColors[0] || "");
-      setSelectedSize(orderedSizes.includes("M") ? "M" : orderedSizes[0] || "");
+      const nextColor = orderedColors[0] || "";
+      const sizesForColor = getAvailableSizesForColor({
+        sizes: orderedSizes.length > 0 ? orderedSizes : ["N/A"],
+        variants: product.variants || [],
+        selectedColor: nextColor,
+        hasColorOptions: orderedColors.length > 0,
+      });
+      setSelectedColor(nextColor);
+      setSelectedSize(getInitialSizeForColor(sizesForColor));
     }
   }, [isExpanded, product, orderedColors, orderedSizes]);
 
@@ -201,20 +210,17 @@ function VerticalProductLayout({
     selectedColor,
     hasColorOptions: orderedColors.length > 0,
   });
-  const effectiveSelectedSize =
-    needsSize
-      ? resolveSelectedSizeForColor(selectedSize, availableSizesForColor)
-      : selectedSize;
+  const effectiveSelectedSize = resolveSelectedSizeForColor(
+    selectedSize,
+    availableSizesForColor,
+  );
 
   useEffect(() => {
-    if (!isExpanded || !product || !needsSize) return;
-    if (
-      availableSizesForColor.length > 0 &&
-      !availableSizesForColor.includes(selectedSize)
-    ) {
-      setSelectedSize(availableSizesForColor[0] || "");
+    if (!isExpanded || !product) return;
+    if (selectedSize && !availableSizesForColor.includes(selectedSize)) {
+      setSelectedSize("");
     }
-  }, [isExpanded, product, needsSize, selectedSize, availableSizesForColor]);
+  }, [isExpanded, product, selectedSize, availableSizesForColor]);
 
   const handleToggleFavorite = useCallback(
     () => toggleFavorite(product.id, product.title),
@@ -245,46 +251,35 @@ function VerticalProductLayout({
         return;
       }
       
-      let selectedVariantId: string | undefined;
       let finalColor = selectedColor || "N/A";
-      let finalSize = needsSize ? effectiveSelectedSize : "N/A";
+      let finalSize = effectiveSelectedSize || selectedSize || "N/A";
+      const variant = findVariantForSelection(availableVariants, {
+        selectedColor,
+        selectedSize: effectiveSelectedSize,
+        hasColorOptions: orderedColors.length > 0,
+        hasSizeOptions: orderedSizes.length > 0,
+      });
 
-      if (orderedColors.length > 0 || orderedSizes.length > 0) {
-        const variant = availableVariants.find((v) => {
-          const vColor = getOptionValue(v.attributes, "Color");
-          const vSize = getOptionValue(v.attributes, "Size");
-
-          const colorMatch =
-            orderedColors.length === 0 || vColor === selectedColor;
-          const sizeMatch =
-            orderedSizes.length === 0 || vSize === finalSize;
-
-          return colorMatch && sizeMatch;
-        });
-        selectedVariantId = variant?.id;
-        if (variant) {
-          finalColor = getOptionValue(variant.attributes, "Color") || finalColor;
-          finalSize = getOptionValue(variant.attributes, "Size") || finalSize;
+      if (!variant) {
+        if (selectedSize && !availableSizesForColor.includes(selectedSize) && selectedColor) {
+          toast.error(getUnavailableCombinationMessage(selectedSize, selectedColor));
+        } else if (orderedSizes.length > 0 && !effectiveSelectedSize) {
+          toast.error("Please select an available size");
+        } else {
+          toast.error("That color and size combination isn’t available");
         }
-      } else if (availableVariants.length > 0) {
-        const variant = availableVariants[0];
-        selectedVariantId = variant.id;
-        finalColor = getOptionValue(variant.attributes, "Color") || "N/A";
-        finalSize = getOptionValue(variant.attributes, "Size") || "N/A";
+        return;
       }
 
-      if (!selectedVariantId && availableVariants.length > 0) {
-        selectedVariantId = availableVariants[0].id;
-      }
+      finalColor = getOptionValue(variant.attributes, "Color") || finalColor;
+      finalSize = getOptionValue(variant.attributes, "Size") || finalSize;
 
-      if (selectedVariantId) {
-        const variantImageUrl = getVariantImageUrl(product, selectedVariantId);
-        addToCart(product.slug, selectedVariantId, finalSize, finalColor, variantImageUrl);
-        setIsExpanded(false);
-        openCartSidebar();
-      }
+      const variantImageUrl = getVariantImageUrl(product, variant.id);
+      addToCart(product.slug, variant.id, finalSize, finalColor, variantImageUrl);
+      setIsExpanded(false);
+      openCartSidebar();
     },
-    [canPurchase, product, addToCart, selectedColor, effectiveSelectedSize, orderedColors, orderedSizes, availableVariants, needsSize, openCartSidebar]
+    [canPurchase, product, addToCart, selectedColor, selectedSize, effectiveSelectedSize, orderedColors, orderedSizes, availableVariants, availableSizesForColor, openCartSidebar]
   );
 
   const isFavorite = favoriteIds.includes(product.id);
@@ -492,17 +487,17 @@ function VerticalProductLayout({
               </div>
             )}
 
-            {availableSizesForColor.length > 0 &&
-              availableSizesForColor[0] !== "N/A" &&
-              !(availableSizesForColor.length === 1 && availableSizesForColor[0] === "One size") && (
+            {orderedSizes.length > 0 &&
+              orderedSizes[0] !== "N/A" &&
+              !(orderedSizes.length === 1 && orderedSizes[0] === "One size") && (
                 <div>
                   <label className="block text-xs font-medium mb-2 text-foreground/90 dark:text-foreground/90 dark:text-muted-foreground">
                     Size
                   </label>
                   <div className="grid grid-cols-5 gap-2">
-                    {availableSizesForColor.map((size) => {
+                    {orderedSizes.map((size) => {
                       const isAvailable = availableSizesForColor.includes(size);
-                      const isSelected = size === effectiveSelectedSize;
+                      const isSelected = isAvailable && size === effectiveSelectedSize;
 
                       return (
                         <button
@@ -511,15 +506,18 @@ function VerticalProductLayout({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            if (isAvailable) setSelectedSize(size);
+                            if (isAvailable) {
+                              setSelectedSize(size);
+                              return;
+                            }
+                            toast.error(getUnavailableCombinationMessage(size, selectedColor || undefined));
                           }}
-                          disabled={!isAvailable}
                           className={cn(
                             "h-8 border border-border/60 rounded-lg transition-all text-xs font-medium",
                             isSelected
                               ? "border-[#00EC97] bg-[#00EC97] text-black"
                               : "bg-background/40 text-foreground hover:bg-background/60 hover:border-[#00EC97]",
-                            !isAvailable && "opacity-50 cursor-not-allowed line-through"
+                            !isAvailable && "opacity-50 line-through"
                           )}
                         >
                           {size}
@@ -546,7 +544,7 @@ function VerticalProductLayout({
                 type="button"
                 onClick={handleAddToCart}
                 className="flex-1 bg-[#00EC97] text-black h-9 flex items-center justify-center rounded-lg text-sm font-medium hover:bg-[#00d97f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!canPurchase}
+                disabled={!canPurchase || (orderedSizes.length > 0 && !effectiveSelectedSize)}
               >
                 Add to Cart
               </button>

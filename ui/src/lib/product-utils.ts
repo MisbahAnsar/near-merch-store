@@ -100,7 +100,7 @@ export function getAvailableSizesForColor({
       const variantColor = getOptionValue(variant.attributes, "Color");
       const colorMatches = !hasColorOptions || variantColor === selectedColor;
 
-      return variantSize === size && colorMatches && variant.availableForSale;
+      return variantSize === size && colorMatches && variant.availableForSale !== false;
     });
   });
 }
@@ -113,7 +113,50 @@ export function resolveSelectedSizeForColor(
     return selectedSize;
   }
 
-  return availableSizesForColor[0] || "";
+  return "";
+}
+
+export function getInitialSizeForColor(availableSizesForColor: string[]): string {
+  if (availableSizesForColor.includes("M")) return "M";
+  return availableSizesForColor[0] && availableSizesForColor[0] !== "N/A"
+    ? availableSizesForColor[0]
+    : "";
+}
+
+export function getUnavailableCombinationMessage(size: string, color?: string): string {
+  if (color) {
+    return `${size} isn’t available in ${color}. Please pick another size.`;
+  }
+  return `${size} isn’t available. Please pick another size.`;
+}
+
+export function findVariantForSelection<T extends VariantWithOptions>(
+  variants: T[],
+  {
+    selectedColor,
+    selectedSize,
+    hasColorOptions,
+    hasSizeOptions,
+  }: {
+    selectedColor: string;
+    selectedSize: string;
+    hasColorOptions: boolean;
+    hasSizeOptions: boolean;
+  },
+): T | undefined {
+  const isPurchasable = (variant: T) => variant.availableForSale !== false;
+
+  if (!hasColorOptions && !hasSizeOptions) {
+    return variants.find(isPurchasable);
+  }
+
+  return variants.find((variant) => {
+    const variantColor = getOptionValue(variant.attributes, "Color");
+    const variantSize = getOptionValue(variant.attributes, "Size");
+    const colorMatch = !hasColorOptions || variantColor === selectedColor;
+    const sizeMatch = !hasSizeOptions || variantSize === selectedSize;
+    return colorMatch && sizeMatch && isPurchasable(variant);
+  });
 }
 
 function isProductDisplayImage(image: ProductImageWithVariants): boolean {
