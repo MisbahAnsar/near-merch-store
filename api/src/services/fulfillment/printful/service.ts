@@ -35,7 +35,12 @@ import type {
   VariantPriceOutput,
 } from '../schema';
 import { PrintfulClient, type PrintfulSyncProduct, type PrintfulSyncVariant, type VariantPricing } from './client';
-import { remapPrintfulPlacement, type CatalogPlacementData } from './placements';
+import {
+  filesNeedCatalogLookup,
+  fulfillmentFileTechnique,
+  remapPrintfulPlacement,
+  type CatalogPlacementData,
+} from './placements';
 import type { MockupStyleInfo } from './types';
 import type { ProductWithImages, ProductVariantInput, Product, FulfillmentConfig } from '../../../schema';
 import type { SyncProgressEvent } from '../schema';
@@ -252,13 +257,26 @@ export class PrintfulService {
         return { status: 'unsupported', images: [] };
       }
 
-      const placements = input.files
-        .filter((f: any) => f.metadata?.technique)
-        .map((f: any) => ({
-          placement: f.slot,
-          technique: f.metadata.technique,
-          layers: [{ type: 'file' as const, url: f.url }],
-        }));
+      let catalog: CatalogPlacementData = null;
+      if (config.catalogProductId && filesNeedCatalogLookup(input.files)) {
+        catalog = yield* Effect.promise(() => this.client.getCatalogProduct(config.catalogProductId!));
+      }
+      const siblingSlots = input.files.map((file) => file.slot || 'default');
+      const placements = input.files.flatMap((file) => {
+        const originalSlot = file.slot || 'default';
+        const resolved = remapPrintfulPlacement(
+          originalSlot,
+          fulfillmentFileTechnique(file),
+          catalog,
+          siblingSlots,
+        );
+        if (!resolved.technique) return [];
+        return [{
+          placement: resolved.slot,
+          technique: resolved.technique,
+          layers: [{ type: 'file' as const, url: file.url }],
+        }];
+      });
 
       const payload = {
         format: input.format === 'png' ? MockupTaskCreation.format.PNG : MockupTaskCreation.format.JPG,
@@ -387,16 +405,15 @@ export class PrintfulService {
         };
 
         const catalogProductsByProductId = new Map<number, CatalogPlacementData>();
-        const productIds = new Set<number>();
         for (const item of input.items) {
           const config = item.providerConfig as { catalogProductId?: number };
-          if (config?.catalogProductId) productIds.add(config.catalogProductId);
-        }
-        for (const productId of productIds) {
-          const catalogProduct = await this.client.getCatalogProduct(productId);
-          catalogProductsByProductId.set(productId, catalogProduct);
+          const files = item.files || [];
+          if (!config?.catalogProductId || catalogProductsByProductId.has(config.catalogProductId)) continue;
+          if (!filesNeedCatalogLookup(files)) continue;
+          const catalogProduct = await this.client.getCatalogProduct(config.catalogProductId);
+          catalogProductsByProductId.set(config.catalogProductId, catalogProduct);
           if (!catalogProduct) {
-            console.warn(`[PrintfulService.createOrder] Catalog product ${productId} not available — cannot remap placements or resolve missing techniques`);
+            console.warn(`[PrintfulService.createOrder] Catalog product ${config.catalogProductId} not available — cannot remap placements or resolve missing techniques`);
           }
         }
 
@@ -414,15 +431,17 @@ export class PrintfulService {
             });
           }
 
-          const catalogProduct = catalogProductsByProductId.get(config.catalogProductId!) ?? null;
-          const siblingSlots = (item.files || []).map((df: any) => df.slot || 'default');
-          const placements = (item.files || [])
-            .filter((df: any) => df.url)
-            .map((df: any) => {
-              const originalSlot = df.slot || 'default';
+          const catalogProduct = config.catalogProductId
+            ? catalogProductsByProductId.get(config.catalogProductId) ?? null
+            : null;
+          const files = (item.files || []).filter((file: FulfillmentFile) => file.url);
+          const siblingSlots = files.map((file) => file.slot || 'default');
+          const placements = files
+            .map((file) => {
+              const originalSlot = file.slot || 'default';
               const resolved = remapPrintfulPlacement(
                 originalSlot,
-                df.metadata?.technique as string | undefined,
+                fulfillmentFileTechnique(file),
                 catalogProduct,
                 siblingSlots,
               );
@@ -438,7 +457,7 @@ export class PrintfulService {
               return {
                 placement: slot,
                 technique,
-                url: df.url,
+                url: file.url,
               };
             })
             .filter((p): p is { placement: string; technique: string; url: string } => !!p.technique)
@@ -632,6 +651,7 @@ export class PrintfulService {
           try: async () => {
             for (const item of items) {
               if (!item.catalogProductId || catalogProductsByProductId.has(item.catalogProductId)) continue;
+              if (!filesNeedCatalogLookup(item.designFiles || [])) continue;
               catalogProductsByProductId.set(
                 item.catalogProductId,
                 await this.client.getCatalogProduct(item.catalogProductId),
@@ -648,18 +668,19 @@ export class PrintfulService {
               const catalogProduct = item.catalogProductId
                 ? catalogProductsByProductId.get(item.catalogProductId) ?? null
                 : null;
-              const siblingSlots = (item.designFiles || []).map((df: any) => df.slot || 'default');
+              const designFiles = item.designFiles || [];
+              const siblingSlots = designFiles.map((file) => file.slot || 'default');
               return {
                 catalog_variant_id: item.catalogVariantId,
                 quantity: item.quantity,
-                designFiles: item.designFiles?.map((df: any) => {
+                designFiles: designFiles.map((file) => {
                   const resolved = remapPrintfulPlacement(
-                    df.slot || 'default',
-                    df.metadata?.technique as string | undefined,
+                    file.slot || 'default',
+                    fulfillmentFileTechnique(file),
                     catalogProduct,
                     siblingSlots,
                   );
-                  return { placement: resolved.slot, url: df.url, technique: resolved.technique };
+                  return { placement: resolved.slot, url: file.url, technique: resolved.technique };
                 }),
               };
             }),
@@ -907,7 +928,10 @@ export class PrintfulService {
       const slot = resolved.slot;
       const technique = resolved.technique ?? null;
 
-      if (bySlot.has(slot)) continue;
+      if (bySlot.has(slot)) {
+        console.warn(`[PrintfulService.extractDesignFiles] Skipping file ${f.id} (type="${type}") on "${syncProductName ?? 'unknown'}" because slot "${slot}" is already occupied`);
+        continue;
+      }
 
       const resolvedUrl = f.url || f.preview_url || f.thumbnail_url || null;
       if (!resolvedUrl) continue;
@@ -1264,20 +1288,27 @@ export class PrintfulService {
 
       for (const variantId of params.variantIds) {
         try {
-          const files = params.designFiles.map(df => {
-            let technique: string | null = null;
-            if (df.placement === 'default') {
-              technique = params.primaryPlacement?.technique ?? null;
-            } else {
-              technique = params.placementTechniques?.[df.placement] ?? null;
-            }
-            return {
-              assetId: `asset-${df.placement}`,
-              url: df.url,
-              slot: df.placement,
-              ...(technique ? { metadata: { technique } } : {}),
-            };
-          }).filter(f => f.metadata?.technique);
+          const catalog: CatalogPlacementData = {
+            primaryPlacement: params.primaryPlacement,
+            placementTechniques: params.placementTechniques,
+          };
+          const siblingSlots = params.designFiles.map((designFile) => designFile.placement || 'default');
+          const files = params.designFiles.flatMap((designFile) => {
+            const originalSlot = designFile.placement || 'default';
+            const resolved = remapPrintfulPlacement(
+              originalSlot,
+              params.placementTechniques?.[originalSlot] ?? null,
+              catalog,
+              siblingSlots,
+            );
+            if (!resolved.technique) return [];
+            return [{
+              assetId: `asset-${resolved.slot}`,
+              url: designFile.url,
+              slot: resolved.slot,
+              metadata: { technique: resolved.technique },
+            }];
+          });
 
           if (files.length === 0) continue;
 

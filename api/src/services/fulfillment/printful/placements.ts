@@ -1,3 +1,5 @@
+import type { FulfillmentFile } from "../schema";
+
 export const CENTERED_PLACEMENT_PRIORITY = [
   "front",
   "front_large",
@@ -8,7 +10,16 @@ export const CENTERED_PLACEMENT_PRIORITY = [
   "embroidery_chest_center",
 ] as const;
 
-const MISMAPPED_DEFAULT_SLOTS = new Set(["default", "embroidery_chest_left"]);
+export const SECONDARY_PLACEMENTS = new Set([
+  "back",
+  "embroidery_chest_left",
+  "sleeve_left",
+  "sleeve_right",
+  "label_inside",
+  "label_outside",
+  "inside",
+  "neck",
+]);
 
 export type CatalogPlacement = {
   placement?: string;
@@ -48,7 +59,21 @@ export function pickPrimaryPlacement(
     }
   }
 
-  return { name: search[0].placement, technique: search[0].technique };
+  const fallback = search.find((placement) => !SECONDARY_PLACEMENTS.has(placement.placement));
+  if (!fallback) return undefined;
+  return { name: fallback.placement, technique: fallback.technique };
+}
+
+export function fulfillmentFileTechnique(file: FulfillmentFile): string | undefined {
+  const technique = file.metadata?.technique;
+  return typeof technique === "string" ? technique : undefined;
+}
+
+export function filesNeedCatalogLookup(files: FulfillmentFile[]): boolean {
+  return files.some((file) => {
+    const slot = file.slot || "default";
+    return slot === "default" || !fulfillmentFileTechnique(file);
+  });
 }
 
 export function remapPrintfulPlacement(
@@ -59,29 +84,35 @@ export function remapPrintfulPlacement(
 ): { slot: string; technique: string | undefined } {
   const normalizedSlot = slot || "default";
   const primary = catalog?.primaryPlacement;
+  const placementTechniques = catalog?.placementTechniques;
+  const isKnownSlot = Boolean(placementTechniques?.[normalizedSlot]);
+  const needsRemap = normalizedSlot === "default" || (catalog != null && !isKnownSlot);
 
-  if (MISMAPPED_DEFAULT_SLOTS.has(normalizedSlot) && primary) {
-    const wouldCollide =
-      primary.name !== normalizedSlot && siblingSlots.includes(primary.name);
-    if (!wouldCollide) {
-      return { slot: primary.name, technique: primary.technique };
-    }
-  }
-
-  if (technique) {
-    return { slot: normalizedSlot, technique };
-  }
-
-  if (normalizedSlot === "default") {
+  if (!needsRemap) {
     return {
-      slot: primary?.name ?? "default",
-      technique: primary?.technique,
+      slot: normalizedSlot,
+      technique: technique ?? placementTechniques?.[normalizedSlot] ?? primary?.technique,
+    };
+  }
+
+  const wouldCollide = Boolean(
+    primary && primary.name !== normalizedSlot && siblingSlots.includes(primary.name),
+  );
+  const primaryTechnique = primary
+    ? (placementTechniques?.[primary.name] ?? primary.technique)
+    : undefined;
+  const techniqueCompatible =
+    !technique || !primaryTechnique || primaryTechnique === technique;
+
+  if (!primary || wouldCollide || !techniqueCompatible) {
+    return {
+      slot: normalizedSlot,
+      technique: technique ?? placementTechniques?.[normalizedSlot] ?? primary?.technique,
     };
   }
 
   return {
-    slot: normalizedSlot,
-    technique:
-      catalog?.placementTechniques?.[normalizedSlot] ?? primary?.technique,
+    slot: primary.name,
+    technique: technique ?? primaryTechnique,
   };
 }

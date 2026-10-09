@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  filesNeedCatalogLookup,
   pickPrimaryPlacement,
   remapPrintfulPlacement,
 } from "../../src/services/fulfillment/printful/placements";
@@ -38,6 +39,18 @@ describe("pickPrimaryPlacement", () => {
       technique: "embroidery",
     });
   });
+
+  it("does not fall back to back or left-chest embroidery", () => {
+    expect(
+      pickPrimaryPlacement(
+        [
+          { placement: "embroidery_chest_left", technique: "embroidery" },
+          { placement: "back", technique: "dtg" },
+        ],
+        techniques,
+      ),
+    ).toBeUndefined();
+  });
 });
 
 describe("remapPrintfulPlacement", () => {
@@ -50,12 +63,40 @@ describe("remapPrintfulPlacement", () => {
     },
   };
 
-  it("remaps left-chest files to the centered catalog placement", () => {
+  it("remaps default files to the centered catalog placement", () => {
+    expect(remapPrintfulPlacement("default", "dtg", catalog)).toEqual({
+      slot: "front",
+      technique: "dtg",
+    });
+  });
+
+  it("keeps genuine left-chest embroidery instead of guessing a front remap", () => {
     expect(
       remapPrintfulPlacement("embroidery_chest_left", "embroidery", catalog),
     ).toEqual({
+      slot: "embroidery_chest_left",
+      technique: "embroidery",
+    });
+  });
+
+  it("remaps slots that are invalid for the catalog product", () => {
+    expect(remapPrintfulPlacement("not_a_real_slot", "dtg", catalog)).toEqual({
       slot: "front",
       technique: "dtg",
+    });
+  });
+
+  it("keeps the incoming technique when it matches the primary placement", () => {
+    expect(remapPrintfulPlacement("default", "dtg", catalog)).toEqual({
+      slot: "front",
+      technique: "dtg",
+    });
+  });
+
+  it("does not swap an embroidery file onto a DTG front placement", () => {
+    expect(remapPrintfulPlacement("default", "embroidery", catalog)).toEqual({
+      slot: "default",
+      technique: "embroidery",
     });
   });
 
@@ -66,15 +107,32 @@ describe("remapPrintfulPlacement", () => {
     });
   });
 
-  it("does not remap left-chest onto a sibling front file", () => {
+  it("does not remap a default file onto a sibling front file", () => {
     expect(
-      remapPrintfulPlacement("embroidery_chest_left", "embroidery", catalog, [
-        "embroidery_chest_left",
-        "front",
-      ]),
+      remapPrintfulPlacement("default", undefined, catalog, ["default", "front"]),
     ).toEqual({
-      slot: "embroidery_chest_left",
-      technique: "embroidery",
+      slot: "default",
+      technique: "dtg",
     });
+  });
+});
+
+describe("filesNeedCatalogLookup", () => {
+  it("needs a catalog fetch for default slots or missing techniques", () => {
+    expect(
+      filesNeedCatalogLookup([
+        { assetId: "1", url: "https://example.com/a.png", slot: "front", metadata: { technique: "dtg" } },
+      ]),
+    ).toBe(false);
+    expect(
+      filesNeedCatalogLookup([
+        { assetId: "1", url: "https://example.com/a.png", slot: "default", metadata: { technique: "dtg" } },
+      ]),
+    ).toBe(true);
+    expect(
+      filesNeedCatalogLookup([
+        { assetId: "1", url: "https://example.com/a.png", slot: "front" },
+      ]),
+    ).toBe(true);
   });
 });

@@ -116,11 +116,36 @@ export function resolveSelectedSizeForColor(
   return "";
 }
 
+export function hasSelectableSizes(sizes: string[]): boolean {
+  return (
+    sizes.length > 0 &&
+    sizes[0] !== "N/A" &&
+    !(sizes.length === 1 && sizes[0] === "One size")
+  );
+}
+
 export function getInitialSizeForColor(availableSizesForColor: string[]): string {
+  if (!hasSelectableSizes(availableSizesForColor)) return "";
   if (availableSizesForColor.includes("M")) return "M";
-  return availableSizesForColor[0] && availableSizesForColor[0] !== "N/A"
-    ? availableSizesForColor[0]
-    : "";
+  return availableSizesForColor[0] || "";
+}
+
+export function sizeAfterColorChange(
+  selectedSize: string,
+  availableSizesForColor: string[],
+): string {
+  return availableSizesForColor.includes(selectedSize) ? selectedSize : "";
+}
+
+export function sizeOptionSelection(
+  size: string,
+  availableSizesForColor: string[],
+  selectedColor?: string,
+): { size: string } | { error: string } {
+  if (availableSizesForColor.includes(size)) {
+    return { size };
+  }
+  return { error: getUnavailableCombinationMessage(size, selectedColor) };
 }
 
 export function getUnavailableCombinationMessage(size: string, color?: string): string {
@@ -128,6 +153,28 @@ export function getUnavailableCombinationMessage(size: string, color?: string): 
     return `${size} isn’t available in ${color}. Please pick another size.`;
   }
   return `${size} isn’t available. Please pick another size.`;
+}
+
+export function getUnavailableVariantMessage({
+  selectedSize,
+  selectedColor,
+  effectiveSelectedSize,
+  availableSizesForColor,
+  hasSizeOptions,
+}: {
+  selectedSize: string;
+  selectedColor: string;
+  effectiveSelectedSize: string;
+  availableSizesForColor: string[];
+  hasSizeOptions: boolean;
+}): string {
+  if (selectedSize && !availableSizesForColor.includes(selectedSize) && selectedColor) {
+    return getUnavailableCombinationMessage(selectedSize, selectedColor);
+  }
+  if (hasSizeOptions && !effectiveSelectedSize) {
+    return "Please select an available size";
+  }
+  return "That color and size combination isn’t available";
 }
 
 export function findVariantForSelection<T extends VariantWithOptions>(

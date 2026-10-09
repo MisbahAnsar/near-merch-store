@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   findVariantForSelection,
   getAvailableSizesForColor,
+  getInitialSizeForColor,
+  hasSelectableSizes,
   getVariantImageUrl,
   resolveSelectedSizeForColor,
 } from "./product-utils";
@@ -53,6 +55,65 @@ describe("product option utilities", () => {
         hasSizeOptions: true,
       })?.id,
     ).toBe("blue-jean-s");
+  });
+
+  it("treats undefined availableForSale as buyable and false as not", () => {
+    const mixed = [
+      {
+        id: "legacy",
+        attributes: [
+          { name: "Color", value: "Black" },
+          { name: "Size", value: "M" },
+        ],
+      },
+      {
+        id: "oos",
+        attributes: [
+          { name: "Color", value: "Black" },
+          { name: "Size", value: "L" },
+        ],
+        availableForSale: false,
+      },
+      {
+        id: "in-stock",
+        attributes: [
+          { name: "Color", value: "Black" },
+          { name: "Size", value: "S" },
+        ],
+        availableForSale: true,
+      },
+    ];
+
+    expect(
+      getAvailableSizesForColor({
+        sizes: ["S", "M", "L"],
+        variants: mixed,
+        selectedColor: "Black",
+        hasColorOptions: true,
+      }),
+    ).toEqual(["S", "M"]);
+    expect(
+      findVariantForSelection(mixed, {
+        selectedColor: "Black",
+        selectedSize: "M",
+        hasColorOptions: true,
+        hasSizeOptions: true,
+      })?.id,
+    ).toBe("legacy");
+    expect(
+      findVariantForSelection(mixed, {
+        selectedColor: "Black",
+        selectedSize: "L",
+        hasColorOptions: true,
+        hasSizeOptions: true,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("does not treat N/A as a size the shopper must pick", () => {
+    expect(hasSelectableSizes(["N/A"])).toBe(false);
+    expect(getInitialSizeForColor(["N/A"])).toBe("");
+    expect(hasSelectableSizes(["S", "M", "L"])).toBe(true);
   });
 
   it("resolves variant images from local Printful image ids when variantIds are missing", () => {

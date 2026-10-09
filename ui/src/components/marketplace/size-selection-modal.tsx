@@ -8,9 +8,12 @@ import {
   getAttributeHex,
   getInitialSizeForColor,
   getOptionValue,
-  getUnavailableCombinationMessage,
+  getUnavailableVariantMessage,
   getVariantImageUrl,
+  hasSelectableSizes,
   resolveSelectedSizeForColor,
+  sizeAfterColorChange,
+  sizeOptionSelection,
 } from "@/lib/product-utils";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
@@ -84,12 +87,12 @@ export function SizeSelectionModal({
     selectedSize,
     availableSizesForColor,
   );
+  const hasSizeOptions = hasSelectableSizes(orderedSizes);
 
   useEffect(() => {
     if (!isOpen || !product) return;
-    if (selectedSize && !availableSizesForColor.includes(selectedSize)) {
-      setSelectedSize("");
-    }
+    const nextSize = sizeAfterColorChange(selectedSize, availableSizesForColor);
+    if (nextSize !== selectedSize) setSelectedSize(nextSize);
   }, [isOpen, product, selectedSize, availableSizesForColor]);
 
   const handleAddToCart = () => {
@@ -99,17 +102,19 @@ export function SizeSelectionModal({
       selectedColor,
       selectedSize: effectiveSelectedSize,
       hasColorOptions: orderedColors.length > 0,
-      hasSizeOptions: orderedSizes.length > 0,
+      hasSizeOptions,
     });
 
     if (!variant) {
-      if (selectedSize && !availableSizesForColor.includes(selectedSize) && selectedColor) {
-        toast.error(getUnavailableCombinationMessage(selectedSize, selectedColor));
-      } else if (orderedSizes.length > 0 && !effectiveSelectedSize) {
-        toast.error("Please select an available size");
-      } else {
-        toast.error("That color and size combination isn’t available");
-      }
+      toast.error(
+        getUnavailableVariantMessage({
+          selectedSize,
+          selectedColor,
+          effectiveSelectedSize,
+          availableSizesForColor,
+          hasSizeOptions,
+        }),
+      );
       return;
     }
 
@@ -190,9 +195,7 @@ export function SizeSelectionModal({
             </div>
           )}
 
-          {orderedSizes.length > 0 &&
-            orderedSizes[0] !== "N/A" &&
-            !(orderedSizes.length === 1 && orderedSizes[0] === "One size") && (
+          {hasSizeOptions && (
               <div className="mb-6">
                 <label className="block text-[14px] tracking-[-0.48px] mb-3">
                   Size
@@ -207,11 +210,16 @@ export function SizeSelectionModal({
                         key={size}
                         type="button"
                         onClick={() => {
-                          if (isAvailable) {
-                            setSelectedSize(size);
+                          const selection = sizeOptionSelection(
+                            size,
+                            availableSizesForColor,
+                            selectedColor || undefined,
+                          );
+                          if ("error" in selection) {
+                            toast.error(selection.error);
                             return;
                           }
-                          toast.error(getUnavailableCombinationMessage(size, selectedColor || undefined));
+                          setSelectedSize(selection.size);
                         }}
                         className={cn(
                           "h-12 border border-border/60 rounded-lg transition-all tracking-[-0.48px] text-[14px] font-medium",
@@ -240,7 +248,7 @@ export function SizeSelectionModal({
               type="button"
               onClick={handleAddToCart}
               className="flex-1 h-10 bg-[#00EC97] text-black tracking-[-0.48px] text-[14px] hover:bg-[#00d97f] transition-colors rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={orderedSizes.length > 0 && !effectiveSelectedSize}
+              disabled={hasSizeOptions && !effectiveSelectedSize}
             >
               Add to Cart
             </button>

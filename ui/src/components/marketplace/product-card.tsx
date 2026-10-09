@@ -23,9 +23,12 @@ import {
   getAttributeHex,
   getInitialSizeForColor,
   getOptionValue,
-  getUnavailableCombinationMessage,
+  getUnavailableVariantMessage,
   getVariantImageUrl,
+  hasSelectableSizes,
   resolveSelectedSizeForColor,
+  sizeAfterColorChange,
+  sizeOptionSelection,
 } from "@/lib/product-utils";
 import { getLowestVariantPrice } from "@/lib/product-price";
 import { toast } from "sonner";
@@ -215,11 +218,12 @@ function VerticalProductLayout({
     availableSizesForColor,
   );
 
+  const hasSizeOptions = hasSelectableSizes(orderedSizes);
+
   useEffect(() => {
     if (!isExpanded || !product) return;
-    if (selectedSize && !availableSizesForColor.includes(selectedSize)) {
-      setSelectedSize("");
-    }
+    const nextSize = sizeAfterColorChange(selectedSize, availableSizesForColor);
+    if (nextSize !== selectedSize) setSelectedSize(nextSize);
   }, [isExpanded, product, selectedSize, availableSizesForColor]);
 
   const handleToggleFavorite = useCallback(
@@ -257,17 +261,19 @@ function VerticalProductLayout({
         selectedColor,
         selectedSize: effectiveSelectedSize,
         hasColorOptions: orderedColors.length > 0,
-        hasSizeOptions: orderedSizes.length > 0,
+        hasSizeOptions,
       });
 
       if (!variant) {
-        if (selectedSize && !availableSizesForColor.includes(selectedSize) && selectedColor) {
-          toast.error(getUnavailableCombinationMessage(selectedSize, selectedColor));
-        } else if (orderedSizes.length > 0 && !effectiveSelectedSize) {
-          toast.error("Please select an available size");
-        } else {
-          toast.error("That color and size combination isn’t available");
-        }
+        toast.error(
+          getUnavailableVariantMessage({
+            selectedSize,
+            selectedColor,
+            effectiveSelectedSize,
+            availableSizesForColor,
+            hasSizeOptions,
+          }),
+        );
         return;
       }
 
@@ -279,7 +285,7 @@ function VerticalProductLayout({
       setIsExpanded(false);
       openCartSidebar();
     },
-    [canPurchase, product, addToCart, selectedColor, selectedSize, effectiveSelectedSize, orderedColors, orderedSizes, availableVariants, availableSizesForColor, openCartSidebar]
+    [canPurchase, product, addToCart, selectedColor, selectedSize, effectiveSelectedSize, orderedColors, hasSizeOptions, availableVariants, availableSizesForColor, openCartSidebar]
   );
 
   const isFavorite = favoriteIds.includes(product.id);
@@ -487,9 +493,7 @@ function VerticalProductLayout({
               </div>
             )}
 
-            {orderedSizes.length > 0 &&
-              orderedSizes[0] !== "N/A" &&
-              !(orderedSizes.length === 1 && orderedSizes[0] === "One size") && (
+            {hasSizeOptions && (
                 <div>
                   <label className="block text-xs font-medium mb-2 text-foreground/90 dark:text-foreground/90 dark:text-muted-foreground">
                     Size
@@ -506,11 +510,16 @@ function VerticalProductLayout({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            if (isAvailable) {
-                              setSelectedSize(size);
+                            const selection = sizeOptionSelection(
+                              size,
+                              availableSizesForColor,
+                              selectedColor || undefined,
+                            );
+                            if ("error" in selection) {
+                              toast.error(selection.error);
                               return;
                             }
-                            toast.error(getUnavailableCombinationMessage(size, selectedColor || undefined));
+                            setSelectedSize(selection.size);
                           }}
                           className={cn(
                             "h-8 border border-border/60 rounded-lg transition-all text-xs font-medium",
@@ -544,7 +553,7 @@ function VerticalProductLayout({
                 type="button"
                 onClick={handleAddToCart}
                 className="flex-1 bg-[#00EC97] text-black h-9 flex items-center justify-center rounded-lg text-sm font-medium hover:bg-[#00d97f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!canPurchase || (orderedSizes.length > 0 && !effectiveSelectedSize)}
+                disabled={!canPurchase || (hasSizeOptions && !effectiveSelectedSize)}
               >
                 Add to Cart
               </button>

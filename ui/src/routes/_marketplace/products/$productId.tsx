@@ -23,10 +23,13 @@ import {
   getAttributeHex,
   getInitialSizeForColor,
   getOptionValue,
-  getUnavailableCombinationMessage,
+  getUnavailableVariantMessage,
   getVariantImage,
   getVariantImageUrl,
+  hasSelectableSizes,
   resolveSelectedSizeForColor,
+  sizeAfterColorChange,
+  sizeOptionSelection,
 } from "@/lib/product-utils";
 import {
   absoluteUrl,
@@ -312,11 +315,12 @@ function ProductDetailPage() {
     availableSizesForColor
   );
 
+  const hasSizeOptions = hasSelectableSizes(orderedSizes);
   const selectedVariant = findVariantForSelection(availableVariants, {
     selectedColor,
     selectedSize: effectiveSelectedSize,
     hasColorOptions: orderedColors.length > 0,
-    hasSizeOptions: orderedSizes.length > 0,
+    hasSizeOptions,
   });
 
   const displayPrice = selectedVariant?.price || product.price;
@@ -420,9 +424,8 @@ function ProductDetailPage() {
   }, [defaultColor, defaultSize, product.id]);
 
   useEffect(() => {
-    if (selectedSize && !availableSizesForColor.includes(selectedSize)) {
-      setSelectedSize("");
-    }
+    const nextSize = sizeAfterColorChange(selectedSize, availableSizesForColor);
+    if (nextSize !== selectedSize) setSelectedSize(nextSize);
   }, [selectedSize, availableSizesForColor]);
 
   // When color/variant changes via color picker (not thumbnail click), update main image
@@ -470,13 +473,15 @@ function ProductDetailPage() {
   const handleAddToCart = () => {
     if (!canPurchase) return;
     if (!selectedVariant) {
-      if (selectedSize && !availableSizesForColor.includes(selectedSize) && selectedColor) {
-        toast.error(getUnavailableCombinationMessage(selectedSize, selectedColor));
-      } else if (orderedSizes.length > 0 && !effectiveSelectedSize) {
-        toast.error("Please select an available size");
-      } else {
-        toast.error("That color and size combination isn’t available");
-      }
+      toast.error(
+        getUnavailableVariantMessage({
+          selectedSize,
+          selectedColor,
+          effectiveSelectedSize,
+          availableSizesForColor,
+          hasSizeOptions,
+        }),
+      );
       return;
     }
     const variantImageUrl = selectedVariantId ? getVariantImageUrl(product, selectedVariantId) : undefined;
@@ -863,7 +868,7 @@ function ProductDetailPage() {
             )}
 
               {/* Size Selection */}
-            {hasVariants && orderedSizes.length > 0 && !(orderedSizes.length === 1 && orderedSizes[0] === "One size") && (
+            {hasVariants && hasSizeOptions && (
               <div className="space-y-3 min-h-[80px]">
                   <label className="block text-sm font-semibold tracking-[-0.48px] text-foreground/90 dark:text-muted-foreground uppercase">
                     Size
@@ -877,11 +882,16 @@ function ProductDetailPage() {
                       <button
                         key={size}
                         onClick={() => {
-                          if (isAvailable) {
-                            setSelectedSize(size);
+                          const selection = sizeOptionSelection(
+                            size,
+                            availableSizesForColor,
+                            selectedColor || undefined,
+                          );
+                          if ("error" in selection) {
+                            toast.error(selection.error);
                             return;
                           }
-                          toast.error(getUnavailableCombinationMessage(size, selectedColor || undefined));
+                          setSelectedSize(selection.size);
                         }}
                         className={cn(
                             "px-5 py-2.5 tracking-[-0.48px] transition-all rounded-lg font-medium text-sm border-2",
