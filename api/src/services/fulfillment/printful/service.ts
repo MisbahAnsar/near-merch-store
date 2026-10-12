@@ -35,6 +35,12 @@ import type {
   VariantPriceOutput,
 } from '../schema';
 import { PrintfulClient, type PrintfulSyncProduct, type PrintfulSyncVariant, type VariantPricing } from './client';
+import {
+  filesNeedCatalogLookup,
+  fulfillmentFileTechnique,
+  remapPrintfulPlacement,
+  type CatalogPlacementData,
+} from './placements';
 import type { MockupStyleInfo } from './types';
 import type { ProductWithImages, ProductVariantInput, Product, FulfillmentConfig } from '../../../schema';
 import type { SyncProgressEvent } from '../schema';
@@ -251,13 +257,29 @@ export class PrintfulService {
         return { status: 'unsupported', images: [] };
       }
 
-      const placements = input.files
-        .filter((f: any) => f.metadata?.technique)
-        .map((f: any) => ({
-          placement: f.slot,
-          technique: f.metadata.technique,
-          layers: [{ type: 'file' as const, url: f.url }],
-        }));
+      let catalog: CatalogPlacementData = null;
+      if (config.catalogProductId && filesNeedCatalogLookup(input.files)) {
+        catalog = yield* Effect.promise(() => this.client.getCatalogProduct(config.catalogProductId!));
+      }
+      const siblingSlots = input.files.map((file) => file.slot || 'default');
+      const placements = input.files.flatMap((file) => {
+        const originalSlot = file.slot || 'default';
+        const resolved = remapPrintfulPlacement(
+          originalSlot,
+          fulfillmentFileTechnique(file),
+          catalog,
+          siblingSlots,
+        );
+        if (resolved.blocked) {
+          console.warn(`[PrintfulService.generateMockups] Placement remap blocked (${resolved.blocked}) for slot "${originalSlot}" on catalog product ${productId} — sending literal slot, which may collide with a sibling placement`);
+        }
+        if (!resolved.technique) return [];
+        return [{
+          placement: resolved.slot,
+          technique: resolved.technique,
+          layers: [{ type: 'file' as const, url: file.url }],
+        }];
+      });
 
       const payload = {
         format: input.format === 'png' ? MockupTaskCreation.format.PNG : MockupTaskCreation.format.JPG,
@@ -385,28 +407,16 @@ export class PrintfulService {
           tax_number: input.recipient.taxId,
         };
 
-        const itemsWithMissingTechnique = input.items.filter(item =>
-          (item.files || []).some((df: any) => !df.metadata?.technique),
-        );
-        const catalogProductsByProductId = new Map<number, {
-          placementTechniques?: Record<string, string>;
-          primaryPlacement?: { name: string; technique: string };
-        } | null>();
-
-        if (itemsWithMissingTechnique.length > 0) {
-          const productIds = new Set<number>();
-          for (const item of itemsWithMissingTechnique) {
-            const config = item.providerConfig as { catalogProductId?: number };
-            if (config?.catalogProductId) productIds.add(config.catalogProductId);
-          }
-          for (const productId of productIds) {
-            if (!catalogProductsByProductId.has(productId)) {
-              const catalogProduct = await this.client.getCatalogProduct(productId);
-              catalogProductsByProductId.set(productId, catalogProduct);
-              if (!catalogProduct) {
-                console.warn(`[PrintfulService.createOrder] Catalog product ${productId} not available — cannot resolve missing techniques`);
-              }
-            }
+        const catalogProductsByProductId = new Map<number, CatalogPlacementData>();
+        for (const item of input.items) {
+          const config = item.providerConfig as { catalogProductId?: number };
+          const files = item.files || [];
+          if (!config?.catalogProductId || catalogProductsByProductId.has(config.catalogProductId)) continue;
+          if (!filesNeedCatalogLookup(files)) continue;
+          const catalogProduct = await this.client.getCatalogProduct(config.catalogProductId);
+          catalogProductsByProductId.set(config.catalogProductId, catalogProduct);
+          if (!catalogProduct) {
+            console.warn(`[PrintfulService.createOrder] Catalog product ${config.catalogProductId} not available — cannot remap placements or resolve missing techniques`);
           }
         }
 
@@ -424,31 +434,35 @@ export class PrintfulService {
             });
           }
 
-          const placements = (item.files || [])
-            .filter((df: any) => df.url)
-            .map((df: any) => {
-              const slot = df.slot || 'default';
-              let technique = df.metadata?.technique as string | undefined;
+          const catalogProduct = config.catalogProductId
+            ? catalogProductsByProductId.get(config.catalogProductId) ?? null
+            : null;
+          const files = (item.files || []).filter((file: FulfillmentFile) => file.url);
+          const siblingSlots = files.map((file) => file.slot || 'default');
+          const placements = files
+            .map((file) => {
+              const originalSlot = file.slot || 'default';
+              const resolved = remapPrintfulPlacement(
+                originalSlot,
+                fulfillmentFileTechnique(file),
+                catalogProduct,
+                siblingSlots,
+              );
+              const slot = resolved.slot;
+              const technique = resolved.technique;
 
-              if (!technique) {
-                const catalogProduct = catalogProductsByProductId.get(config.catalogProductId!) ?? null;
-                if (slot === 'default') {
-                  technique = catalogProduct?.primaryPlacement?.technique;
-                } else {
-                  technique = catalogProduct?.placementTechniques?.[slot]
-                    ?? catalogProduct?.primaryPlacement?.technique;
-                }
-                if (technique) {
-                  console.info(`[PrintfulService.createOrder] Resolved technique "${technique}" for placement "${slot}" from catalog product ${config.catalogProductId}`);
-                } else {
-                  console.warn(`[PrintfulService.createOrder] Could not resolve technique for placement "${slot}" on catalog product ${config.catalogProductId} — file will be skipped`);
-                }
+              if (resolved.blocked) {
+                console.warn(`[PrintfulService.createOrder] Placement remap blocked (${resolved.blocked}) for slot "${originalSlot}" on catalog product ${config.catalogProductId} — sending literal slot "${slot}", which may collide with a sibling placement (Printful OR-12)`);
+              } else if (technique && slot !== originalSlot) {
+                console.info(`[PrintfulService.createOrder] Remapped placement "${originalSlot}" to "${slot}" (${technique}) for catalog product ${config.catalogProductId}`);
+              } else if (!technique) {
+                console.warn(`[PrintfulService.createOrder] Could not resolve technique for placement "${slot}" on catalog product ${config.catalogProductId} — file will be skipped`);
               }
 
               return {
                 placement: slot,
                 technique,
-                url: df.url,
+                url: file.url,
               };
             })
             .filter((p): p is { placement: string; technique: string; url: string } => !!p.technique)
@@ -479,6 +493,25 @@ export class PrintfulService {
           recipient,
           order_items: orderItems as any,
         });
+
+        // The createOrder response only carries simplified items — fetch full
+        // items to inspect per-placement design status. A failed placement does
+        // not fail the HTTP call, so without this check the order would look
+        // accepted and break later at fulfillment. Warn only: the order (and
+        // payment) already exist, and Printful may still fulfill the remaining
+        // placements.
+        try {
+          const items = await this.client.getOrderItems(result.id);
+          for (const orderItem of items) {
+            for (const placement of orderItem.placements || []) {
+              if (placement.status === 'failed') {
+                console.error(`[PrintfulService.createOrder] Order ${result.id} has FAILED placement "${placement.placement}" (${placement.technique}): ${placement.status_explanation ?? 'no explanation given'} — fulfillment may be blocked; resolve in the Printful dashboard`);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[PrintfulService.createOrder] Could not verify placement statuses for order ${result.id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
 
         return { id: String(result.id), status: result.status };
       },
@@ -614,18 +647,21 @@ export class PrintfulService {
     const startedAt = Date.now();
 
     return Effect.gen(this, function* () {
+      const catalogProductsByProductId = new Map<number, CatalogPlacementData>();
       const items = input.items
         .map(item => {
-          const config = item.providerConfig as { catalogVariantId?: number };
+          const config = item.providerConfig as { catalogVariantId?: number; catalogProductId?: number };
           if (!config?.catalogVariantId) return null;
           return {
             catalogVariantId: config.catalogVariantId,
+            catalogProductId: config.catalogProductId,
             quantity: item.quantity,
             designFiles: item.files,
           };
         })
         .filter(Boolean) as Array<{
           catalogVariantId: number;
+          catalogProductId?: number;
           quantity: number;
           designFiles?: FulfillmentFile[];
         }>;
@@ -636,20 +672,50 @@ export class PrintfulService {
 
       try {
         const result = yield* Effect.tryPromise({
-          try: () => this.client.estimateOrder({
+          try: async () => {
+            for (const item of items) {
+              if (!item.catalogProductId || catalogProductsByProductId.has(item.catalogProductId)) continue;
+              if (!filesNeedCatalogLookup(item.designFiles || [])) continue;
+              catalogProductsByProductId.set(
+                item.catalogProductId,
+                await this.client.getCatalogProduct(item.catalogProductId),
+              );
+            }
+
+            return this.client.estimateOrder({
             recipient: {
               country_code: input.recipient.countryCode,
               zip: input.recipient.zip,
               state_code: input.recipient.stateCode || undefined,
             },
-            items: items.map(item => ({
-              catalog_variant_id: item.catalogVariantId,
-              quantity: item.quantity,
-              designFiles: item.designFiles?.map((df: any) => ({ placement: df.slot, url: df.url, technique: df.metadata?.technique })),
-            })),
+            items: items.map(item => {
+              const catalogProduct = item.catalogProductId
+                ? catalogProductsByProductId.get(item.catalogProductId) ?? null
+                : null;
+              const designFiles = item.designFiles || [];
+              const siblingSlots = designFiles.map((file) => file.slot || 'default');
+              return {
+                catalog_variant_id: item.catalogVariantId,
+                quantity: item.quantity,
+                designFiles: designFiles.map((file) => {
+                  const originalSlot = file.slot || 'default';
+                  const resolved = remapPrintfulPlacement(
+                    originalSlot,
+                    fulfillmentFileTechnique(file),
+                    catalogProduct,
+                    siblingSlots,
+                  );
+                  if (resolved.blocked) {
+                    console.warn(`[PrintfulService.estimateOrder] Placement remap blocked (${resolved.blocked}) for slot "${originalSlot}" on catalog product ${item.catalogProductId} — sending literal slot "${resolved.slot}", which may collide with a sibling placement`);
+                  }
+                  return { placement: resolved.slot, url: file.url, technique: resolved.technique };
+                }),
+              };
+            }),
             currency: input.currency || 'USD',
             ...(isQuoteMode ? { timeoutMs: 5000, requestTimeoutMs: 5000, retries: 0 } : {}),
-          }),
+            });
+          },
           catch: (e) => {
             if (e instanceof FulfillmentError) return e;
             return new FulfillmentError({
@@ -872,27 +938,32 @@ export class PrintfulService {
     }
 
     const bySlot = new Map<string, { file: typeof files[number]; slot: string; technique: string | null; resolvedUrl: string }>();
+    const siblingSlots = files
+      .map((file) => file.type?.toLowerCase() || "default")
+      .filter((fileType) => !PrintfulService.IGNORED_FILE_TYPES.has(fileType));
 
     for (const f of files) {
       const type = f.type?.toLowerCase() || '';
       if (PrintfulService.IGNORED_FILE_TYPES.has(type)) continue;
 
-      let slot: string;
-      let technique: string | null = null;
+      const originalSlot = type || 'default';
+      const resolved = remapPrintfulPlacement(
+        originalSlot,
+        catalogPlacements?.placementTechniques?.[originalSlot] ?? null,
+        catalogPlacements,
+        siblingSlots,
+      );
+      const slot = resolved.slot;
+      const technique = resolved.technique ?? null;
 
-      if (type === 'default') {
-        const primary = catalogPlacements?.primaryPlacement;
-        slot = primary?.name ?? 'default';
-        technique = primary?.technique ?? null;
-      } else if (catalogPlacements?.placementTechniques?.[type]) {
-        slot = type;
-        technique = catalogPlacements.placementTechniques[type];
-      } else {
-        slot = type || 'default';
-        technique = catalogPlacements?.placementTechniques?.[slot] ?? null;
+      if (resolved.blocked) {
+        console.warn(`[PrintfulService.extractDesignFiles] Placement remap blocked (${resolved.blocked}) for file ${f.id} (type="${type}", slot="${slot}") on "${syncProductName ?? 'unknown'}"`);
       }
 
-      if (bySlot.has(slot)) continue;
+      if (bySlot.has(slot)) {
+        console.warn(`[PrintfulService.extractDesignFiles] Skipping file ${f.id} (type="${type}") on "${syncProductName ?? 'unknown'}" because slot "${slot}" is already occupied`);
+        continue;
+      }
 
       const resolvedUrl = f.url || f.preview_url || f.thumbnail_url || null;
       if (!resolvedUrl) continue;
@@ -1249,20 +1320,30 @@ export class PrintfulService {
 
       for (const variantId of params.variantIds) {
         try {
-          const files = params.designFiles.map(df => {
-            let technique: string | null = null;
-            if (df.placement === 'default') {
-              technique = params.primaryPlacement?.technique ?? null;
-            } else {
-              technique = params.placementTechniques?.[df.placement] ?? null;
+          const catalog: CatalogPlacementData = {
+            primaryPlacement: params.primaryPlacement,
+            placementTechniques: params.placementTechniques,
+          };
+          const siblingSlots = params.designFiles.map((designFile) => designFile.placement || 'default');
+          const files = params.designFiles.flatMap((designFile) => {
+            const originalSlot = designFile.placement || 'default';
+            const resolved = remapPrintfulPlacement(
+              originalSlot,
+              params.placementTechniques?.[originalSlot] ?? null,
+              catalog,
+              siblingSlots,
+            );
+            if (resolved.blocked) {
+              console.warn(`[PrintfulService.generateMockupsForProduct] Placement remap blocked (${resolved.blocked}) for slot "${originalSlot}" on catalog product ${params.catalogProductId} — sending literal slot "${resolved.slot}", which may collide with a sibling placement`);
             }
-            return {
-              assetId: `asset-${df.placement}`,
-              url: df.url,
-              slot: df.placement,
-              ...(technique ? { metadata: { technique } } : {}),
-            };
-          }).filter(f => f.metadata?.technique);
+            if (!resolved.technique) return [];
+            return [{
+              assetId: `asset-${resolved.slot}`,
+              url: designFile.url,
+              slot: resolved.slot,
+              metadata: { technique: resolved.technique },
+            }];
+          });
 
           if (files.length === 0) continue;
 

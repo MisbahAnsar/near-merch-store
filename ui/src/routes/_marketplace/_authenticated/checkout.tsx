@@ -773,7 +773,7 @@ function CheckoutPage() {
                         if (availableStates.length > 0 && !value) {
                           return 'State / Province is required';
                         }
-                        if (value && !isStateSupported(form.state.values.country, value, undefined, providers)) {
+                        if (value && !isStateSupported(form.state.values.country, String(value), undefined, providers)) {
                           return 'Delivery is not available for this region';
                         }
                         return undefined;

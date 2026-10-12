@@ -21,11 +21,18 @@ const cartItem = {
   color: "Black",
 };
 
-const product = {
+const product: Product = {
   id: "product-1",
   slug: "test-product",
   title: "Test Product",
+  createdAt: "2026-01-01T00:00:00.000Z",
   price: 25,
+  currency: "USD",
+  tags: [],
+  featured: false,
+  collections: [],
+  options: [],
+  images: [],
   variants: [
     {
       id: "variant-1",
@@ -36,7 +43,11 @@ const product = {
       availableForSale: true,
     },
   ],
-} as Product;
+  designFiles: [],
+  fulfillmentProvider: "manual",
+  listed: true,
+  priceLocked: false,
+};
 
 function seedCart() {
   act(() => {
