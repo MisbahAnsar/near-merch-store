@@ -8,7 +8,7 @@ import {
 } from 'printful-sdk-js-v2';
 import { Effect, Schedule } from 'every-plugin/effect';
 import { FulfillmentError } from '../errors';
-import { pickPrimaryPlacement } from './placements';
+import { pickPrimaryPlacement, buildPlacementTechniques } from './placements';
 
 export type { Address, CatalogItem, Order, Shipment, Variant } from 'printful-sdk-js-v2';
 
@@ -268,7 +268,6 @@ export class PrintfulClient {
       const product = data.data;
       const techniques = new Set<string>();
       const orderedPlacements: string[] = [];
-      const placementTechniques: Record<string, string> = {};
       const catalogTechniques = Array.isArray(product.techniques) ? product.techniques : [];
       for (const technique of catalogTechniques) {
         if (technique?.key) techniques.add(technique.key);
@@ -278,12 +277,14 @@ export class PrintfulClient {
         for (const p of product.placements) {
           if (p.placement) {
             orderedPlacements.push(p.placement);
-            if (p.technique) {
-              placementTechniques[p.placement] = p.technique;
-            }
           }
         }
       }
+
+      const placementTechniques = buildPlacementTechniques(
+        Array.isArray(product.placements) ? product.placements : [],
+        catalogTechniques,
+      );
 
       const primaryPlacement = pickPrimaryPlacement(
         Array.isArray(product.placements) ? product.placements : [],
@@ -491,6 +492,24 @@ export class PrintfulClient {
       `getOrder(${orderId})`
     );
     return result.data as Order;
+  }
+
+  /**
+   * Fetches an order's items with full placement data, including each
+   * placement's design status ("ok" | "failed" + status_explanation).
+   */
+  async getOrderItems(orderId: number | string): Promise<Array<{
+    id?: number;
+    placements?: Array<{ placement: string; technique: string; status?: string; status_explanation?: string }>;
+  }>> {
+    const result = await this.executeWithRetry(
+      () => this.sdk.ordersV2.getItemsByOrderId(orderId, undefined, 100, undefined, this.storeId),
+      `getItemsByOrderId(${orderId})`
+    );
+    return (result?.data ?? []) as Array<{
+      id?: number;
+      placements?: Array<{ placement: string; technique: string; status?: string; status_explanation?: string }>;
+    }>;
   }
 
   async getOrderShipments(orderId: string): Promise<Shipment[]> {

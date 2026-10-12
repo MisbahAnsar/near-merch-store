@@ -270,6 +270,9 @@ export class PrintfulService {
           catalog,
           siblingSlots,
         );
+        if (resolved.blocked) {
+          console.warn(`[PrintfulService.generateMockups] Placement remap blocked (${resolved.blocked}) for slot "${originalSlot}" on catalog product ${productId} — sending literal slot, which may collide with a sibling placement`);
+        }
         if (!resolved.technique) return [];
         return [{
           placement: resolved.slot,
@@ -448,7 +451,9 @@ export class PrintfulService {
               const slot = resolved.slot;
               const technique = resolved.technique;
 
-              if (technique && slot !== originalSlot) {
+              if (resolved.blocked) {
+                console.warn(`[PrintfulService.createOrder] Placement remap blocked (${resolved.blocked}) for slot "${originalSlot}" on catalog product ${config.catalogProductId} — sending literal slot "${slot}", which may collide with a sibling placement (Printful OR-12)`);
+              } else if (technique && slot !== originalSlot) {
                 console.info(`[PrintfulService.createOrder] Remapped placement "${originalSlot}" to "${slot}" (${technique}) for catalog product ${config.catalogProductId}`);
               } else if (!technique) {
                 console.warn(`[PrintfulService.createOrder] Could not resolve technique for placement "${slot}" on catalog product ${config.catalogProductId} — file will be skipped`);
@@ -488,6 +493,25 @@ export class PrintfulService {
           recipient,
           order_items: orderItems as any,
         });
+
+        // The createOrder response only carries simplified items — fetch full
+        // items to inspect per-placement design status. A failed placement does
+        // not fail the HTTP call, so without this check the order would look
+        // accepted and break later at fulfillment. Warn only: the order (and
+        // payment) already exist, and Printful may still fulfill the remaining
+        // placements.
+        try {
+          const items = await this.client.getOrderItems(result.id);
+          for (const orderItem of items) {
+            for (const placement of orderItem.placements || []) {
+              if (placement.status === 'failed') {
+                console.error(`[PrintfulService.createOrder] Order ${result.id} has FAILED placement "${placement.placement}" (${placement.technique}): ${placement.status_explanation ?? 'no explanation given'} — fulfillment may be blocked; resolve in the Printful dashboard`);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[PrintfulService.createOrder] Could not verify placement statuses for order ${result.id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
 
         return { id: String(result.id), status: result.status };
       },
@@ -674,12 +698,16 @@ export class PrintfulService {
                 catalog_variant_id: item.catalogVariantId,
                 quantity: item.quantity,
                 designFiles: designFiles.map((file) => {
+                  const originalSlot = file.slot || 'default';
                   const resolved = remapPrintfulPlacement(
-                    file.slot || 'default',
+                    originalSlot,
                     fulfillmentFileTechnique(file),
                     catalogProduct,
                     siblingSlots,
                   );
+                  if (resolved.blocked) {
+                    console.warn(`[PrintfulService.estimateOrder] Placement remap blocked (${resolved.blocked}) for slot "${originalSlot}" on catalog product ${item.catalogProductId} — sending literal slot "${resolved.slot}", which may collide with a sibling placement`);
+                  }
                   return { placement: resolved.slot, url: file.url, technique: resolved.technique };
                 }),
               };
@@ -927,6 +955,10 @@ export class PrintfulService {
       );
       const slot = resolved.slot;
       const technique = resolved.technique ?? null;
+
+      if (resolved.blocked) {
+        console.warn(`[PrintfulService.extractDesignFiles] Placement remap blocked (${resolved.blocked}) for file ${f.id} (type="${type}", slot="${slot}") on "${syncProductName ?? 'unknown'}"`);
+      }
 
       if (bySlot.has(slot)) {
         console.warn(`[PrintfulService.extractDesignFiles] Skipping file ${f.id} (type="${type}") on "${syncProductName ?? 'unknown'}" because slot "${slot}" is already occupied`);
@@ -1301,6 +1333,9 @@ export class PrintfulService {
               catalog,
               siblingSlots,
             );
+            if (resolved.blocked) {
+              console.warn(`[PrintfulService.generateMockupsForProduct] Placement remap blocked (${resolved.blocked}) for slot "${originalSlot}" on catalog product ${params.catalogProductId} — sending literal slot "${resolved.slot}", which may collide with a sibling placement`);
+            }
             if (!resolved.technique) return [];
             return [{
               assetId: `asset-${resolved.slot}`,

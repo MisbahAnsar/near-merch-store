@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPlacementTechniques,
   filesNeedCatalogLookup,
   pickPrimaryPlacement,
   remapPrintfulPlacement,
@@ -97,6 +98,7 @@ describe("remapPrintfulPlacement", () => {
     expect(remapPrintfulPlacement("default", "embroidery", catalog)).toEqual({
       slot: "default",
       technique: "embroidery",
+      blocked: "technique-mismatch",
     });
   });
 
@@ -113,7 +115,61 @@ describe("remapPrintfulPlacement", () => {
     ).toEqual({
       slot: "default",
       technique: "dtg",
+      blocked: "collision",
     });
+  });
+
+  it("reports no-primary when the catalog has no primary placement", () => {
+    expect(
+      remapPrintfulPlacement("default", undefined, { placementTechniques: { front: "dtg" } }),
+    ).toEqual({
+      slot: "default",
+      blocked: "no-primary",
+    });
+  });
+});
+
+describe("buildPlacementTechniques", () => {
+  it("prefers the default technique when one placement has several", () => {
+    expect(
+      buildPlacementTechniques(
+        [
+          { placement: "front", technique: "embroidery" },
+          { placement: "front", technique: "dtg" },
+        ],
+        techniques,
+      ),
+    ).toEqual({ front: "dtg" });
+  });
+
+  it("keeps the default-technique entry regardless of response order", () => {
+    expect(
+      buildPlacementTechniques(
+        [
+          { placement: "front", technique: "dtg" },
+          { placement: "front", technique: "embroidery" },
+        ],
+        [{ key: "embroidery", is_default: true }],
+      ),
+    ).toEqual({ front: "embroidery" });
+  });
+
+  it("falls back to first-wins when there is no default technique", () => {
+    expect(
+      buildPlacementTechniques([
+        { placement: "front", technique: "dtg" },
+        { placement: "front", technique: "embroidery" },
+      ]),
+    ).toEqual({ front: "dtg" });
+  });
+
+  it("skips placements without a technique", () => {
+    expect(
+      buildPlacementTechniques([
+        { placement: "front" },
+        { placement: "back", technique: "dtg" },
+      ]),
+    ).toEqual({ back: "dtg" });
   });
 });
 
