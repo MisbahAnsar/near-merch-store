@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { ThemeProvider } from "next-themes";
+import { NotFoundPage } from "@/components/not-found-page";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -22,6 +23,7 @@ import type { RouterContext } from "@/types";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 
 export const Route = createRootRouteWithContext<RouterContext>()({
+  notFoundComponent: NotFoundPage,
   loader: ({ context }) => ({
     assetsUrl: context.assetsUrl || "",
     runtimeConfig: context.runtimeConfig,

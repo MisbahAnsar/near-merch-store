@@ -11,6 +11,7 @@ import {
 	createBrowserHistory,
 	createRouter as createTanStackRouter,
 } from "@tanstack/react-router";
+import { NotFoundPage } from "./components/not-found-page";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
 import type { CreateRouterOptions } from "./types";
@@ -81,6 +82,7 @@ export function createRouter(opts: CreateRouterOptions = {}) {
     defaultStructuralSharing: true,
     defaultPreloadStaleTime: 0,
     defaultErrorComponent: ErrorComponent,
+    defaultNotFoundComponent: NotFoundPage,
     defaultPendingComponent: PendingComponent,
     defaultPendingMinMs: 0,
     dehydrate: () => {
