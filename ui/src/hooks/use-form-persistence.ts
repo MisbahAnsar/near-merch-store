@@ -72,7 +72,8 @@ export function useFormPersistence<T extends Record<string, unknown>>(
     if (!enabled || typeof window === 'undefined' || !scope) return;
 
     // Always subscribe; skip writes only while restoring (ref is not an effect dep).
-    const unsubscribe = form.store.subscribe(() => {
+    // TanStack Store subscribe() returns { unsubscribe }, not a cleanup function.
+    const subscription = form.store.subscribe(() => {
       if (isRestoringRef.current) return;
 
       const values = form.state.values;
@@ -90,7 +91,13 @@ export function useFormPersistence<T extends Record<string, unknown>>(
       }
     });
 
-    return unsubscribe;
+    return () => {
+      if (typeof subscription === 'function') {
+        subscription();
+        return;
+      }
+      subscription?.unsubscribe?.();
+    };
   }, [form, storageKey, enabled, scope]);
 
   const clearPersistence = () => {
